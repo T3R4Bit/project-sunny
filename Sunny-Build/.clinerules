@@ -1,0 +1,6 @@
+You are building Sunny V2 on the KSU AI Lab DGX.
+Before any work, read docs/spec/LAB_RUN.md and follow it exactly.
+Run all python/node/test commands with: docker exec -w /workspace sunny-sandbox <command>
+Run git only through ./push_checkpoint.sh on the host.
+Never edit lab/, never stop sunny-qwen-engine, never use sudo.
+A task is complete only when its tests exit 0 and PROGRESS.md is updated.
