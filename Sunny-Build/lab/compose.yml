@@ -16,13 +16,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     ipc: host
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    runtime: nvidia
     # Explicit entrypoint so the same command works on both the upstream and NGC images.
     entrypoint: ["vllm", "serve"]
     command:
