@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -67,9 +67,6 @@ class Settings(BaseSettings):
     listen_port: int = 8080
     log_level: str = "INFO"
 
-    # --- TTL reload ---
-    _config_cache: dict = Field(default_factory=dict)
-    _last_loaded: float = 0.0
     ttl_seconds: int = 5
 
     def looks_configured(self) -> bool:
