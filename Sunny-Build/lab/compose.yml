@@ -25,7 +25,8 @@ services:
       - --served-model-name=qwen3.6
       - --host=0.0.0.0
       - --port=8000
-      - --gpu-memory-utilization=0.70
+      - --gpu-memory-utilization=0.60
+      - --max-num-seqs=4
       - --max-model-len=131072
       - --enable-prefix-caching
       - --enable-chunked-prefill
@@ -41,6 +42,7 @@ services:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
     container_name: sunny-sandbox
+    mem_limit: 16g
     restart: unless-stopped
     volumes:
       - ..:/workspace
