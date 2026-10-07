@@ -1,0 +1,56 @@
+# Lab infrastructure only. Not part of Sunny. Started by ../setup.sh.
+# Sunny's own stack is ../docker-compose.yml (written by the agent).
+
+services:
+  inference-engine:
+    # Default: upstream vLLM. If it fails on the GB10, rerun setup with NVIDIA's build:
+    #   VLLM_IMAGE=nvcr.io/nvidia/vllm:<tag>-py3 ./setup.sh
+    # (pick a tag that supports the driver shown by nvidia-smi; 26.04 needs driver >= 595)
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:latest}
+    container_name: sunny-qwen-engine
+    restart: unless-stopped
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    ports:
+      - "127.0.0.1:8000:8000"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Explicit entrypoint so the same command works on both the upstream and NGC images.
+    entrypoint: ["vllm", "serve"]
+    command:
+      - Qwen/Qwen3.6-35B-A3B-FP8
+      - --served-model-name=qwen3.6
+      - --host=0.0.0.0
+      - --port=8000
+      - --gpu-memory-utilization=0.80
+      - --max-model-len=131072
+      - --enable-prefix-caching
+      - --enable-chunked-prefill
+      - --kv-cache-dtype=fp8
+      - --enable-auto-tool-choice
+      - --tool-call-parser=qwen3_coder
+
+  sunny-sandbox:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: sunny-sandbox
+    restart: unless-stopped
+    volumes:
+      - ..:/workspace
+      - ${HOME}/lab-cache/models:/models:ro
+    working_dir: /workspace
+    ports:
+      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:8081:8081"
+    command: sleep infinity
