@@ -1,0 +1,14 @@
+[project]
+name = "sunny-frontend"
+version = "0.1.0"
+private = true
+requires-node = ">=18"
+
+[dependencies]
+react = "^18"
+react-dom = "^18"
+typescript = "^5"
+@vitejs/plugin-react = "^4"
+vite = "^5"
+@prefresh/vite = "^2"
+workbox-window = "^7"
