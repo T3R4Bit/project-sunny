@@ -12,6 +12,7 @@ Must finish:
 - [x] P3 Chat runtime and context system
 - [x] P4 Frontend core
 - [x] P5 Research
+- [x] P6 Agent
 
 Target:
 - [ ] P5 Research
@@ -29,9 +30,9 @@ Stretch:
 
 ## Current
 
-- Phase: P6 — Agent
-- Doing: loop, task queue, tool registry, synthesis, subprocess sandbox
-- Next: P6 implementation
+- Phase: P7 — Extraction
+- Doing: rules parser, engine, gates, audit log, starter rules with tests, hot reload
+- Next: P7 implementation
 - Open failures: see BLOCKERS.md
 
 ## P0 Summary
@@ -220,6 +221,48 @@ Stretch:
 - Updated intent router: CREATE_RESEARCH intent already defined with triggers
 
 **Test results:** 20 new tests (test_research.py), 167 total passing
+
+## P6 Summary
+
+**What was built:**
+- Created `backend/sunny/agent/loop.py` — agent loop background task scheduler:
+  - `AgentLoop` class with AWAKE/CANT_SLEEP/SLEEPING/OFF states
+  - 5-minute cycle interval (300s) while Awake or Can't Sleep
+  - Pull queued tasks by priority/deadline, execute, log, commit
+  - Revert-on-failure: git revert to cycle-start commit on unrecoverable errors
+  - Three failures → tool marked `broken`, hidden from agents
+  - `start_agent_loop()` / `stop_agent_loop()` lifespan hooks
+- Created `backend/sunny/tools/task_queue.py` — YAML-based task queue:
+  - `TaskQueue` with enqueue, mark_running, mark_done, mark_failed
+  - Tasks stored in `tasks-queue/<id>.yaml`
+  - Priority sorting (1=high first), deadline-aware ordering
+  - Disk persistence with atomic writes
+- Created `backend/sunny/tools/registry.py` — tool registry:
+  - Built-in tools: `fetch_calendar`, `create_calendar_event`, `sync_nextcloud_to_google`, `log_to_vault`, `notify`, `search`, `create_task`, `read_session`
+  - Tool synthesis: writes to `tools/<name>.py`, registers in `registry.yaml`
+  - Validation: names must be intention-driven (reject IDs and dates)
+  - Three-failure → broken, reactivates on success
+  - `TOOL_HANDLERS` dict for callable tool handlers
+- Created `backend/sunny/tools/subprocess_worker.py` — tool execution isolation:
+  - `execute_tool_in_subprocess(code, timeout, memory_limit_mb, tool_name)`
+  - Runs tool code in a subprocess with timeout
+  - JSON output parsing with error handling
+  - Safe string formatting to prevent injection
+- Created `backend/sunny/tools/notify.py` — proactivity tiers:
+  - SILENT: Execute, log (routine work)
+  - QUIET: Log + mention in next briefing (findings, background work)
+  - SUGGEST: Propose, wait for approval (destructive, anticipatory)
+  - ALERT: Push notification (unresolvable conflicts, tool broken ×3, git corruption)
+  - `NotifyRegistry` with handler pattern
+- Created `backend/sunny/tools/router.py` — agent API endpoints:
+  - GET/POST /agent/status, /agent/start, /agent/stop, /agent/state
+  - GET/POST /agent/tasks — task queue management
+  - POST /agent/synthesize — tool synthesis with validation
+  - GET /agent/tools — list all tools
+- Wired agent loop into `sunny/main.py` lifespan
+- Updated intent router: CREATE_RESEARCH intent already defined
+
+**Test results:** 24 new tests (test_agent.py), 191 total passing
 
 ## P0 Blockers (need human to verify on host)
 

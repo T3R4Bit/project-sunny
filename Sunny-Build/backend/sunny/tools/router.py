@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from sunny.agent.loop import AgentState, get_agent_loop, start_agent_loop, stop_agent_loop
-from sunny.config import get_settings
+import sunny.config
 
 router = APIRouter(tags=["agent"])
 
@@ -71,7 +71,7 @@ async def create_task(body: dict) -> dict:
     agent = body.get("agent", "default")
     source = body.get("source", "user")
 
-    settings = get_settings()
+    settings = sunny.config.get_settings()
     vault = Path(settings.vault_path)
 
     loop = get_agent_loop()
@@ -107,7 +107,7 @@ async def synthesize_tool(body: dict) -> dict:
         )
 
     # Update tool registry vault path from settings
-    settings = get_settings()
+    settings = sunny.config.get_settings()
     vault = Path(settings.vault_path)
     loop = get_agent_loop()
     loop._tool_registry._vault = vault

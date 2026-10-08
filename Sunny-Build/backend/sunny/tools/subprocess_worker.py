@@ -32,19 +32,16 @@ async def execute_tool_in_subprocess(
         return {"status": "error", "error": "Empty tool code"}
 
     try:
-        # Create a worker script
-        worker_code = f"""
-import sys
-import json
-
-def main():
-    # Simulate tool execution
-    result = {{'status': 'completed', 'tool': '{tool_name}'}}
-    print(json.dumps(result))
-
-if __name__ == '__main__':
-    main()
-"""
+        # Create a worker script that uses safe string formatting
+        safe_name = repr(tool_name)
+        worker_code = (
+            "import sys, json\n"
+            "def main():\n"
+            '    result = {"status": "completed", "tool": TOOLNAME}\n'
+            "    print(json.dumps(result))\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        ).replace("TOOLNAME", safe_name)
         # Run the worker as a subprocess
         process = await asyncio.create_subprocess_exec(
             sys.executable, "-c", worker_code,

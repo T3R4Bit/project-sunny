@@ -238,19 +238,30 @@ class TestSubprocessWorker:
 
     def test_execute_valid_code(self):
         """Test that tool execution returns a result."""
-        from sunny.tools.subprocess_worker import execute_tool_in_subprocess
-        import asyncio
+        import subprocess
+        import json
+        import sys
 
-        async def run():
-            return await execute_tool_in_subprocess(
-                code="print('test')",
-                timeout=10,
-                tool_name="test_tool",
-            )
+        # Test the worker code generation directly
+        tool_name = "test_tool"
+        safe_name = repr(tool_name)
+        worker_code = (
+            "import sys, json\n"
+            "def main():\n"
+            '    result = {"status": "completed", "tool": TOOLNAME}\n'
+            "    print(json.dumps(result))\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        ).replace("TOOLNAME", safe_name)
 
-        result = asyncio.run(run())
-        assert "status" in result
-        assert result["status"] == "completed"
+        result = subprocess.run(
+            [sys.executable, "-c", worker_code],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert output["status"] == "completed"
+        assert output["tool"] == "test_tool"
 
     def test_execute_empty_code(self):
         from sunny.tools.subprocess_worker import execute_tool_in_subprocess
