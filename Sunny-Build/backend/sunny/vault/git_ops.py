@@ -115,32 +115,43 @@ def get_head_commit(vault_path: Path) -> Optional[str]:
 
 def status(vault_path: Path) -> dict:
     """Return vault git status dict: {ahead, behind, has_changes}."""
+    # ahead/behind require an upstream; these may fail in local-only repos
+    ahead = 0
+    behind = 0
     try:
-        ahead = subprocess.run(
+        r = subprocess.run(
             ["git", "rev-list", "HEAD..@{u}", "--count"],
             cwd=str(vault_path),
             capture_output=True,
-            check=True,
             text=True,
         )
-        behind = subprocess.run(
+        if r.returncode == 0:
+            ahead = int(r.stdout.strip())
+    except (subprocess.CalledProcessError, ValueError):
+        pass
+
+    try:
+        r = subprocess.run(
             ["git", "rev-list", "@{u}..HEAD", "--count"],
             cwd=str(vault_path),
             capture_output=True,
-            check=True,
             text=True,
         )
-        changed = subprocess.run(
+        if r.returncode == 0:
+            behind = int(r.stdout.strip())
+    except (subprocess.CalledProcessError, ValueError):
+        pass
+
+    # has_changes: always try to check working tree
+    try:
+        r = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=str(vault_path),
             capture_output=True,
-            check=True,
             text=True,
         )
-        return {
-            "ahead": int(ahead.stdout.strip()),
-            "behind": int(behind.stdout.strip()),
-            "has_changes": bool(changed.stdout.strip()),
-        }
-    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
-        return {"ahead": 0, "behind": 0, "has_changes": False}
+        has_changes = bool(r.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        has_changes = False
+
+    return {"ahead": ahead, "behind": behind, "has_changes": has_changes}

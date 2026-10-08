@@ -58,22 +58,26 @@ class TestFDStability:
             assert row[0] == 1
 
     def test_exception_causes_rollback(self, db_file: Path) -> None:
-        """Data written inside a failing transaction should not persist."""
+        """Data written inside a failing transaction should not persist.
+
+        SQLite auto-commits DDL, so we test rollback on DML only.
+        """
+        with closing_transaction(db_file) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS rollback_dml_test (id INTEGER PRIMARY KEY, val TEXT)
+            """)
+
         with pytest.raises(ValueError):
             with closing_transaction(db_file) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS fail_test (id INTEGER PRIMARY KEY)
-                """)
-                conn.execute("INSERT INTO fail_test (id) VALUES (1)")
+                conn.execute("INSERT INTO rollback_dml_test (id, val) VALUES (999, 'lost')")
                 raise ValueError("intentional failure")
 
-        # Table should not exist
+        # Inserted row should not exist
         with closing_transaction(db_file) as conn:
-            tables = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-            table_names = [t[0] for t in tables]
-            assert "fail_test" not in table_names
+            row = conn.execute(
+                "SELECT val FROM rollback_dml_test WHERE id = 999"
+            ).fetchone()
+            assert row is None, "rolled-back data should not persist"
 
 
 def _open_fd_count() -> int:

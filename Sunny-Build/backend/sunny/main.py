@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from sunny.config import get_settings, Settings
 from sunny.db import init_db
+from sunny.auth import router as auth_router
 
 log = logging.getLogger("sunny")
 
@@ -87,6 +88,9 @@ def create_app() -> FastAPI:
             status_code=500,
             content={"error": "internal server error"},
         )
+
+    # Include auth routes
+    app.include_router(auth_router)
 
     return app
 
