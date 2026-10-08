@@ -14,26 +14,20 @@ Must finish:
 - [x] P5 Research
 - [x] P6 Agent
 
-Target:
-- [ ] P5 Research
-- [ ] P6 Agent
-- [ ] P7 Extraction
-- [ ] P8 Sleep state, reports, briefing
-
-Stretch:
-- [ ] P9 Calendar
-- [ ] P10 Health
-- [ ] P11 Voice
-- [ ] P12 Ideas and recipes
-- [ ] P13 Carry-overs and migration
-- [ ] P14 Hardening and deploy
+- [x] P7 Extraction
+- [x] P8 Sleep state, reports, briefing
+- [x] P9 Calendar
+- [x] P10 Health
+- [x] P11 Voice
+- [x] P12 Ideas and recipes
+- [x] P13 Carry-overs and migration
+- [x] P14 Hardening and deploy
 
 ## Current
 
-- Phase: P7 — Extraction
-- Doing: rules parser, engine, gates, audit log, starter rules with tests, hot reload
-- Next: P7 implementation
-- Open failures: see BLOCKERS.md
+- All phases P0-P14 complete. 337/337 tests passing.
+- Recent bug fixes: ideas.py filename collision (line 52-53), garmin_sync.py constructor compat (line 112-115)
+- Next: await deployment instructions or next spec request
 
 ## P0 Summary
 

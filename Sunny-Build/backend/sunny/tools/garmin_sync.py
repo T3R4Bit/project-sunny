@@ -109,11 +109,10 @@ class GarminSync:
             log.warning("garminconnect package not installed")
             return []
 
-        client = Garmin(
-            self.garmin_email,
-            self.garmin_password,
-            is_upload_session=False,
-        )
+        try:
+            client = Garmin(self.garmin_email, self.garmin_password)
+        except TypeError:
+            client = Garmin(self.garmin_email, self.garmin_password, is_upload_session=False)
 
         if start_date is None:
             start_date = datetime.now(timezone.utc) - timedelta(days=days)

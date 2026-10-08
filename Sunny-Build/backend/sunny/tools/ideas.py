@@ -6,6 +6,7 @@ as markdown files in the vault with metadata for easy querying.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -49,8 +50,8 @@ class IdeasManager:
     ) -> Idea:
         """Capture a new idea."""
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        slug = title.lower().replace(" ", "-")[:30] or f"idea-{timestamp}"
-        idea_id = f"idea-{slug}"
+        slug = title.lower().replace(" ", "-")[:30] or content[:20].lower().replace(" ", "-") or f"idea-{timestamp}"
+        idea_id = f"idea-{timestamp}-{hashlib.md5(slug.encode()).hexdigest()[:6]}"
 
         idea = Idea(
             id=idea_id,
