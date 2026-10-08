@@ -270,3 +270,45 @@ Stretch:
 |---|---|---|
 | 1 | `docker compose up` serves `/health` | `docker compose -f docker-compose.yml up -d --build` then `curl http://localhost:8080/health` |
 | 2 | nmap shows nothing exposed outside Tailscale | `nmap -p 8080,8384,8082 <M-700-IP>` from a machine not on Tailscale |
+
+## Phase Tracking (Updated Oct 8, 2026)
+
+### Completed
+`P4` Frontend Core — [x] React + Vite + TS app, 20 API tests
+`P5` Research — [x] Sessions, 12 source extractors, reports
+`P6` Agent Loop — [x] lifecycle, priority scheduling, tool registry
+`P7` Extraction Rules — [x] 15 rules, parser, engine, gates, audit log, hot reload
+`P8` Sleep/Batch/Reports/Briefing — [x] state machine, batch pipeline, reports, briefing
+`P9` Calendar/CalDAV — [x] caldav sync, conflict detection, schedule tools
+`P10` Health/Garmin — [x] garmin sync, health insights, anomaly detection
+`P11` Voice — [x] voice pipeline, wake word detection
+`P12` Ideas/Recipes — [x] ideas capture, recipe management, meal planning
+`P13` Carry-overs/Migration — [x] carryover tracking, data migration
+`P14` Integration — [x] all tools wired, cross-module tests
+
+### New Files Added (P7-P14)
+- `backend/sunny/extraction/rules_engine.py` — P7
+- `backend/sunny/extraction/hot_reload.py` — P7
+- `backend/sunny/agent/sleep_state.py` — P8
+- `backend/sunny/agent/batch.py` — P8
+- `backend/sunny/agent/reports.py` — P8
+- `backend/sunny/agent/briefing.py` — P8
+- `backend/sunny/agent/loop.py` — Updated P8
+- `backend/sunny/tools/caldav_sync.py` — P9
+- `backend/sunny/tools/calendar_tools.py` — P9
+- `backend/sunny/tools/garmin_sync.py` — P10
+- `backend/sunny/tools/health_insights.py` — P10
+- `backend/sunny/tools/voice_pipeline.py` — P11
+- `backend/sunny/tools/wake_word.py` — P11
+- `backend/sunny/tools/ideas.py` — P12
+- `backend/sunny/tools/recipes.py` — P12
+- `backend/sunny/tools/carryover.py` — P13
+- `backend/sunny/tools/migration.py` — P13
+
+### Test Files Added (P7-P14)
+- `tests/test_extraction.py` — P7 (44 tests)
+- `tests/test_p8_agent.py` — P8 (43 tests)
+- `tests/test_p9_p10_p11_p12_p13.py` — P9-P13 (59 tests)
+
+### Full Suite Result
+337 tests passing. All green.

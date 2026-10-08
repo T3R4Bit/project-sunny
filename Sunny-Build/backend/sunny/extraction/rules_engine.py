@@ -170,7 +170,7 @@ class RulesEngine:
         self._compiled.clear()
         for rule in rules:
             try:
-                self._compiled[rule.name] = re.compile(rule.pattern)
+                self._compiled[rule.name] = re.compile(rule.pattern, re.IGNORECASE)
             except re.error:
                 log.warning("Cannot compile pattern for rule %s, skipping", rule.name)
 
