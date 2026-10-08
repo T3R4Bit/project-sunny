@@ -22,6 +22,7 @@ from sunny.index.router import router as index_router
 from sunny.index.watcher import start_index_watcher, stop_index_watcher
 from sunny.llm.router import router as llm_router
 from sunny.research.router import router as research_router
+from sunny.tools.router import router as agent_router
 
 log = logging.getLogger("sunny")
 
@@ -110,6 +111,9 @@ def create_app() -> FastAPI:
     # Include research routes
     app.include_router(research_router)
 
+    # Include agent tools routes
+    app.include_router(agent_router)
+
     return app
 
 
@@ -142,12 +146,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Start the index watcher
     await start_index_watcher()
 
+    # Start the agent loop
+    from sunny.agent.loop import start_agent_loop, stop_agent_loop, AgentState
+    settings = get_settings()
+    agent_state = AgentState.AWAKE if not settings.sleep_state else AgentState.SLEEPING
+    await start_agent_loop(agent_state)
+
     yield
 
     # Shutdown: stop watchers and background loops
     log.info("Sunny V2 shutting down")
     stop_watcher()
     await stop_index_watcher()
+    await stop_agent_loop()
 
     for name, loop in _loop_registry.items():
         if name == "main":
