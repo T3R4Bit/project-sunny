@@ -28,9 +28,9 @@ Stretch:
 
 ## Current
 
-- Phase: P0 ✓ complete
-- Doing: nothing — P0 done
-- Next: P1 Vault, projects, sessions
+- Phase: P1 ✓ complete
+- Doing: nothing — P1 done
+- Next: P2 Index and search
 - Open failures: see BLOCKERS.md
 
 ## P0 Summary
@@ -57,6 +57,38 @@ Stretch:
 - Fixed `test_fd_stability.py::test_exception_causes_rollback` — DDL auto-commits in SQLite, test now validates DML rollback
 
 **Test results:** 43/43 passing
+
+## P1 Summary
+
+**What was built:**
+- Created `backend/sunny/paths.py` — canonical vault path layout with helpers for project, session, context, research, facts, logs, etc.
+- Created `backend/sunny/projects/models.py` — Project and Session Pydantic models with frontmatter serialization:
+  - Project: CRUD, status transitions (active/archive), tags, kind classification
+  - Session: filename parsing, turn appending, close with summary/topics/entities/decisions
+  - Frontmatter: load/dump using string-based helpers (frontmatter.py wrapper)
+- Created `backend/sunny/projects/service.py` — business logic:
+  - Project CRUD + context section management (8 sections with caps)
+  - Session CRUD + append turns + close with context merge
+  - Session move between projects or Home
+  - Personal fact merging, sync conflict detection integration
+- Created `backend/sunny/projects/router.py` — FastAPI routes:
+  - `/projects` CRUD, `/projects/{slug}/context` update
+  - `/projects/{slug}/sessions` CRUD + append/close/move
+  - `/chats/sessions` (Home) CRUD + append/close
+  - `/sync/conflicts` admin endpoints
+- Created `backend/sunny/watcher.py` — vault file watcher:
+  - Uses watchfiles to detect external edits
+  - Tracks external edit timestamps (60s defer window)
+  - Detects Syncthing conflict files (*.sync-conflict-*)
+  - Runs in background daemon thread
+- Created `backend/sunny/frontmatter.py` — string-based frontmatter helpers:
+  - `load(text)` / `dump(post)` for string content
+  - `load_file(path)` / `dump_file(post, path)` for file paths
+- Integrated watcher into `main.py` lifespan
+- Fixed `fm.post.Post` → `fm.Post(content, **metadata)` API usage
+- Added `Project.description` field
+
+**Test results:** 78/78 passing (35 new in test_projects.py)
 
 ## P0 Blockers (need human to verify on host)
 

@@ -2,6 +2,12 @@
 
 Anything that could not be finished: what, why (exact error), what was stubbed, what's needed to unblock.
 
+## P1 — watchfiles dependency (not yet in requirements)
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | `watchfiles` package not in `requirements.txt` | The watcher falls back gracefully with a warning when watchfiles is missing |
+
 ## P0 — Docker Compose acceptance checks (need human on host)
 
 | # | Check | Command |

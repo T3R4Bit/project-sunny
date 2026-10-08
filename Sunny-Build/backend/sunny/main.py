@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse
 from sunny.config import get_settings, Settings
 from sunny.db import init_db
 from sunny.auth import router as auth_router
+from sunny.projects.router import router as projects_router
+from sunny.watcher import start_watcher, stop_watcher
 
 log = logging.getLogger("sunny")
 
@@ -92,6 +94,9 @@ def create_app() -> FastAPI:
     # Include auth routes
     app.include_router(auth_router)
 
+    # Include project/session routes
+    app.include_router(projects_router)
+
     return app
 
 
@@ -117,10 +122,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     log.info("Startup complete")
 
+    # Start the vault file watcher
+    settings = get_settings()
+    watcher_task = await start_watcher(settings.vault_path)
+
     yield
 
-    # Shutdown: stop background loops
+    # Shutdown: stop watcher and background loops
     log.info("Sunny V2 shutting down")
+    stop_watcher()
+
     for name, loop in _loop_registry.items():
         if name == "main":
             continue
