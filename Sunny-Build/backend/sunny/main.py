@@ -18,6 +18,8 @@ from sunny.db import init_db
 from sunny.auth import router as auth_router
 from sunny.projects.router import router as projects_router
 from sunny.watcher import start_watcher, stop_watcher
+from sunny.index.router import router as index_router
+from sunny.index.watcher import start_index_watcher, stop_index_watcher
 
 log = logging.getLogger("sunny")
 
@@ -97,6 +99,9 @@ def create_app() -> FastAPI:
     # Include project/session routes
     app.include_router(projects_router)
 
+    # Include index/search routes
+    app.include_router(index_router)
+
     return app
 
 
@@ -126,11 +131,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     watcher_task = await start_watcher(settings.vault_path)
 
+    # Start the index watcher
+    await start_index_watcher()
+
     yield
 
-    # Shutdown: stop watcher and background loops
+    # Shutdown: stop watchers and background loops
     log.info("Sunny V2 shutting down")
     stop_watcher()
+    await stop_index_watcher()
 
     for name, loop in _loop_registry.items():
         if name == "main":

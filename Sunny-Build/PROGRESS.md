@@ -7,8 +7,8 @@ Status values: `[ ]` todo, `[~]` in progress, `[x]` done, `[!]` partial (see BLO
 
 Must finish:
 - [x] P0 Skeleton
-- [ ] P1 Vault, projects, sessions
-- [ ] P2 Index and search
+- [x] P1 Vault, projects, sessions
+- [x] P2 Index and search
 - [ ] P3 Chat runtime and context system
 - [ ] P4 Frontend core
 
@@ -28,9 +28,9 @@ Stretch:
 
 ## Current
 
-- Phase: P1 ✓ complete
-- Doing: nothing — P1 done
-- Next: P2 Index and search
+- Phase: P3 — Chat runtime and context system
+- Doing: building router, gateway, prompt assembly, session close hook
+- Next: P3 acceptance checks
 - Open failures: see BLOCKERS.md
 
 ## P0 Summary
@@ -89,6 +89,22 @@ Stretch:
 - Added `Project.description` field
 
 **Test results:** 78/78 passing (35 new in test_projects.py)
+
+## P2 Summary
+
+**What was built:**
+- Created `backend/sunny/index/chunker.py` — text chunker that splits by markdown headings and fixed-size windows with configurable overlap
+- Created `backend/sunny/index/fts.py` — FTS5 keyword search with BM25 scoring, project/kind/since filters, post-search tag filtering
+- Created `backend/sunny/index/vector.py` — vector search backend stub (fastembed + sqlite-vec), auto-disables if packages unavailable
+- Created `backend/sunny/index/service.py` — unified search service with hybrid RRF (reciprocal rank fusion) merging of keyword + semantic hits
+- Created `backend/sunny/index/watcher.py` — background index watcher that reindexes changed vault files with 2s debounce, plus `index_all_from_vault()` for reindex scripts
+- Created `backend/sunny/index/router.py` — `/search` API endpoint supporting mode=hybrid|keyword|semantic, project/kind/tags/since filters
+- Integrated index watcher into `main.py` lifespan (starts with app, stops on shutdown)
+- Created `scripts/reindex.py` — drops and rebuilds the entire index from disk, idempotent
+- Fixed FTS5 search: uses `bm25()` function for scoring; WHERE conditions appended via AND after MATCH clause to avoid syntax errors
+- Tags filtered post-search since json_each JOIN conflicts with FTS5 MATCH
+
+**Test results:** 24 new tests (test_index.py), 102 total passing
 
 ## P0 Blockers (need human to verify on host)
 
