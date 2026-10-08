@@ -15,6 +15,7 @@ If the call fails or spend cap blocks it, mark session closed with summary_pendi
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +26,7 @@ from sunny.vault.io import read_file, atomic_write
 from sunny.frontmatter import load, dump
 from sunny.index.service import index_text, init_index
 from sunny.config import get_settings
+from sunny.extraction.rules_engine import RulesEngine, RulesParser, ExtractionLog, write_fact
 
 log = logging.getLogger(__name__)
 
@@ -358,11 +360,59 @@ def _merge_to_personal_context(result: CloseHookResult) -> None:
 
 
 def _run_extraction(transcript: str, session_slug: str) -> None:
-    """Run extraction rules over the transcript.
+    """Run extraction rules over the transcript using the P7 rules engine."""
+    if not transcript.strip():
+        return
 
-    Stub — full implementation is P7.
-    """
-    log.info("Extraction stub for session %s (P7)", session_slug)
+    settings = get_settings()
+    vault = settings.vault_path
+
+    # Load rules from file
+    rules_path = vault / "docs" / "extraction-rules.md"
+    if not rules_path.exists():
+        log.warning("Extraction rules file not found: %s", rules_path)
+        return
+
+    try:
+        rules_content = rules_path.read_text(encoding='utf-8')
+        parser = RulesParser()
+        rules = parser.parse(rules_content)
+        if not rules:
+            log.warning('No valid extraction rules loaded')
+            return
+
+        engine = RulesEngine()
+        engine.set_rules(rules)
+
+        # Match rules against transcript
+        matches = engine.match(transcript, session_slug)
+        if not matches:
+            return
+
+        # Classify by gate
+        classified = engine.classify(matches)
+
+        # Log all decisions
+        log_writer = ExtractionLog(vault)
+        for match in classified['auto_write']:
+            log_writer.log_decision(match, 'auto_write')
+            write_fact(vault, match)
+            log.info('Auto-wrote fact for session %s: %s (tier=%d)', session_slug, match.rule_name, match.tier)
+
+        for match in classified['approve_queue']:
+            log_writer.log_decision(match, 'approve_queue')
+            log.info('Queued for approval: %s (session=%s, tier=%d)', match.rule_name, session_slug, match.tier)
+
+        for match in classified['log_only']:
+            log_writer.log_decision(match, 'log_only')
+            log.debug('Logged only: %s (session=%s, tier=%d)', match.rule_name, session_slug, match.tier)
+
+        log.info('Extraction complete for session %s: %d matches (%d auto, %d queue, %d log)',
+                 session_slug, len(matches), len(classified['auto_write']),
+                 len(classified['approve_queue']), len(classified['log_only']))
+
+    except Exception as e:
+        log.error('Extraction failed for session %s: %s', session_slug, e)
 
 
 def _reindex_session(session_slug: str, project_slug: Optional[str], transcript: str) -> None:
