@@ -21,6 +21,7 @@ from sunny.watcher import start_watcher, stop_watcher
 from sunny.index.router import router as index_router
 from sunny.index.watcher import start_index_watcher, stop_index_watcher
 from sunny.llm.router import router as llm_router
+from sunny.research.router import router as research_router
 
 log = logging.getLogger("sunny")
 
@@ -105,6 +106,9 @@ def create_app() -> FastAPI:
 
     # Include chat/LLM routes
     app.include_router(llm_router)
+
+    # Include research routes
+    app.include_router(research_router)
 
     return app
 

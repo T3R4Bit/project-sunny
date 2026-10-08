@@ -15,7 +15,7 @@ import asyncio
 import json
 import logging
 import time
-from contextlib import asynccontextmanager
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -334,7 +334,6 @@ def _estimate_cost(result: dict) -> float:
     return (prompt / 1_000_000) * 0.003 + (completion / 1_000_000) * 0.015
 
 
-@asynccontextmanager
 async def streaming_chat(
     messages: list[dict],
     model: str = MODEL_DEFAULT,

@@ -126,14 +126,11 @@ def close_project_session(slug: str, session_slug: str, body: dict = {}) -> dict
 
 
 @router.post("/chats/sessions/{session_slug}/chat")
-def chat_completion_endpoint(
+async def chat_completion_endpoint(
     session_slug: str,
     body: dict,
 ) -> dict:
-    """Send a message and get a chat response.
-
-    Assembles the prompt, calls the LLM, and streams the response.
-    """
+    """Send a message and get a chat response."""
     message = body.get("message", "")
     if not message:
         raise HTTPException(status_code=400, detail="Message is required")
@@ -150,7 +147,7 @@ def chat_completion_endpoint(
 
     # Call the LLM
     try:
-        result = chat_completion(
+        result = await chat_completion(
             messages=messages,
             model=MODEL_DEFAULT,
             purpose="chat",
@@ -194,7 +191,7 @@ def chat_stream_endpoint(
         except Exception as e:
             yield f"[Error: {e}]"
 
-    return StreamingResponse(generate(), media_type="text/plain")
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.post("/chats/sessions/{session_slug}/summarize")

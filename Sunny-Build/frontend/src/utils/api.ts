@@ -1,4 +1,4 @@
-const BASE = '/api';
+const BASE = '';  // Backend routes are at root level, no /api prefix
 
 async function request(path: string, init?: RequestInit) {
   const res = await fetch(`${BASE}${path}`, {
@@ -16,11 +16,11 @@ async function request(path: string, init?: RequestInit) {
 export const api = {
   // Auth
   login: (username: string, password: string) =>
-    request('/auth/login', {
+    request('/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ password }),
     }),
-  logout: () => request('/auth/logout', { method: 'POST' }),
+  logout: () => request('/logout', { method: 'POST' }),
   status: () => request('/auth/status'),
 
   // Projects

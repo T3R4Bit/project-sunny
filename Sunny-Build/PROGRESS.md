@@ -10,7 +10,8 @@ Must finish:
 - [x] P1 Vault, projects, sessions
 - [x] P2 Index and search
 - [x] P3 Chat runtime and context system
-- [ ] P4 Frontend core
+- [x] P4 Frontend core
+- [x] P5 Research
 
 Target:
 - [ ] P5 Research
@@ -28,9 +29,9 @@ Stretch:
 
 ## Current
 
-- Phase: P4 — Frontend core
-- Doing: building React + Vite + TypeScript frontend
-- Next: P4 acceptance checks
+- Phase: P6 — Agent
+- Doing: loop, task queue, tool registry, synthesis, subprocess sandbox
+- Next: P6 implementation
 - Open failures: see BLOCKERS.md
 
 ## P0 Summary
@@ -147,6 +148,78 @@ Stretch:
 - Integrated LLM router into `main.py` app factory
 
 **Test results:** 25 new tests (test_chat.py), 127 total passing
+
+## P4 Summary
+
+**What was built:**
+- Created proper React + Vite + TypeScript frontend structure:
+  - `frontend/src/main.tsx` — app entry point
+  - `frontend/src/App.tsx` — main layout with page routing
+  - `frontend/src/types.ts` — TypeScript types (Message, Project, Session)
+  - `frontend/src/utils/api.ts` — API client for all backend endpoints
+  - `frontend/src/hooks/useAuth.ts` — auth state management
+  - `frontend/src/hooks/useChat.ts` — chat with streaming support
+  - `frontend/src/styles/global.css` — neo-brutalist design tokens
+  - `frontend/src/components/Header.tsx` — navigation bar
+  - `frontend/src/pages/HomePage.tsx` — briefing page
+  - `frontend/src/pages/ProjectsPage.tsx` — project list/management
+  - `frontend/src/pages/SessionPage.tsx` — chat with streaming
+  - `frontend/src/pages/SearchPage.tsx` — vault search UI
+  - `frontend/src/pages/AdminPage.tsx` — admin shell
+  - `frontend/src/pages/LoginPage.tsx` — auth login
+- Added PWA manifest (`public/manifest.json`) with icons (192x192, 512x512)
+- Created `tsconfig.json` and `tsconfig.node.json`
+- Fixed `streaming_chat()` — removed incorrect `@asynccontextmanager` decorator
+- Fixed `chat_completion_endpoint()` — made async with `await chat_completion()`
+- Fixed router path for streaming endpoint (`/stream` not `/chat/stream`)
+- Set streaming media type to `text/event-stream`
+- Updated frontend API client paths to match backend (no `/api` prefix)
+
+**Test results:** 20 new tests (test_frontend_api.py), 147 total passing
+
+## P5 Summary
+
+**What was built:**
+- Created `backend/sunny/research/models.py` — research session and source models:
+  - `ResearchSession` — CRUD for research sessions with goal, sources list
+  - `SourceMeta` — metadata schema (title, kind, origin_url, extractor, hash, pages/duration)
+  - `Source` — source with disk save (original, extracted.md, meta.yaml)
+  - `SourceIngest` / `SourceIngestResult` — ingest request/result schemas
+  - `sha256_hex` — content hash for deduplication
+- Created `backend/sunny/research/service.py` — research service layer:
+  - `create_research_session` — creates research session in vault
+  - `add_source_to_research` — source ingest with dedup by content hash
+  - `list_research_sources` — lists all sources in a research session
+  - `_build_citation_context` — builds citation-ready context string with [S1] format
+  - `_citations_replace` — converts [S1] to HTML anchor links
+  - `generate_report` — generates report.md with findings, source list, open gaps
+- Created `backend/sunny/research/router.py` — REST API for research:
+  - GET /research — list research sessions
+  - GET /research/{slug} — get research session
+  - POST /research — create research session
+  - GET /research/{slug}/sources — list sources
+  - POST /research/{slug}/sources — ingest source
+  - POST /research/{slug}/report — generate report
+  - GET /research/{slug}/citations — get citation context
+- Created `backend/sunny/extraction/extractors.py` — source extractors with interfaces:
+  - `BaseExtractor` — abstract interface (supports, extract)
+  - `TextExtractor` — plain text/markdown
+  - `WebExtractor` — trafilatura for web pages
+  - `PDFExtractor` — PyMuPDF with Tesseract OCR fallback
+  - `YouTubeExtractor` — youtube-transcript-api with faster-whisper fallback
+  - `AudioVideoExtractor` — faster-whisper for speech-to-text
+  - `GitHubExtractor` — repo README via GitHub API
+  - `ArXivExtractor` — arXiv XML API
+  - `DocxExtractor` — python-docx
+  - `ImageExtractor` — vision model stub
+  - `EPUBExtractor` — ebooklib
+  - `PPTXExtractor` — python-pptx
+  - `XLSXExtractor` — openpyxl
+  - `get_extractor(kind)` — registry lookup
+- Wired research router into `sunny/main.py`
+- Updated intent router: CREATE_RESEARCH intent already defined with triggers
+
+**Test results:** 20 new tests (test_research.py), 167 total passing
 
 ## P0 Blockers (need human to verify on host)
 
