@@ -242,29 +242,68 @@ def append_turn(session: Session, data: TurnAppend) -> None:
 
 
 def close_session(session: Session, close_data: Optional[SessionClose] = None) -> Session:
-    """Close a session and update frontmatter."""
+    """Close a session and update frontmatter.
+
+    If close_data is provided, uses it directly (manual close).
+    Otherwise calls the LLM close hook for automatic summarization.
+    """
     vault = _vault()
     session.ended = now_iso()
-    session.status = "closed"
 
     if close_data:
+        # Manual close with provided data
         session.summary = close_data.summary
         session.topics = close_data.topics
         session.entities = close_data.entities
         session.decisions = close_data.decisions
         session.open_questions = close_data.open_questions
+        session.status = "closed"
+        session.save(vault)
+        git_commit(vault, f"session: close '{session.title}'")
+        log.info("Closed session %s (manual)", session.slug)
 
-    session.save(vault)
-    git_commit(vault, f"session: close '{session.title}'")
-    log.info("Closed session %s", session.slug)
+        if session.project_slug:
+            _merge_session_context(session, close_data)
+        if close_data.personal_facts:
+            _merge_personal_facts(close_data.personal_facts)
+    else:
+        # Automatic close via LLM hook
+        from sunny.llm.close_hook import run_close_hook
 
-    # Merge into project context
-    if session.project_slug and close_data:
-        _merge_session_context(session, close_data)
+        session_file = session._resolve_path(vault)
+        transcript = ""
+        if session_file.exists():
+            raw = read_file(session_file) or ""
+            from sunny.frontmatter import load as fm_load
+            try:
+                post = fm_load(raw)
+                transcript = getattr(post, "content", raw) if hasattr(post, "content") else raw
+            except Exception:
+                transcript = raw
 
-    # Merge personal facts
-    if close_data and close_data.personal_facts:
-        _merge_personal_facts(close_data.personal_facts)
+        hook_result = run_close_hook(
+            session.slug,
+            project_slug=session.project_slug,
+            session_content=read_file(session_file) or "",
+            session_transcript=transcript,
+        )
+
+        if hook_result.success:
+            session.summary = hook_result.summary
+            session.topics = hook_result.topics
+            session.entities = hook_result.entities
+            session.decisions = hook_result.decisions
+            session.open_questions = hook_result.open_questions
+            session.status = "summarized" if not hook_result.summary_pending else "closed"
+        else:
+            # LLM failed — mark as closed with summary_pending
+            session.status = "closed"
+            session.summary_pending = True
+            log.warning("Close hook failed for %s: %s", session.slug, hook_result.error)
+
+        session.save(vault)
+        git_commit(vault, f"session: close '{session.title}'")
+        log.info("Closed session %s", session.slug)
 
     return session
 

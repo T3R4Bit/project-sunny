@@ -9,7 +9,7 @@ Must finish:
 - [x] P0 Skeleton
 - [x] P1 Vault, projects, sessions
 - [x] P2 Index and search
-- [ ] P3 Chat runtime and context system
+- [x] P3 Chat runtime and context system
 - [ ] P4 Frontend core
 
 Target:
@@ -28,9 +28,9 @@ Stretch:
 
 ## Current
 
-- Phase: P3 — Chat runtime and context system
-- Doing: building router, gateway, prompt assembly, session close hook
-- Next: P3 acceptance checks
+- Phase: P4 — Frontend core
+- Doing: building React + Vite + TypeScript frontend
+- Next: P4 acceptance checks
 - Open failures: see BLOCKERS.md
 
 ## P0 Summary
@@ -105,6 +105,48 @@ Stretch:
 - Tags filtered post-search since json_each JOIN conflicts with FTS5 MATCH
 
 **Test results:** 24 new tests (test_index.py), 102 total passing
+
+## P3 Summary
+
+**What was built:**
+- Created `backend/sunny/router/router.py` — deterministic intent routing with confidence scoring:
+  - 13 intents: list_tasks, create_task, update_task, delete_task, sleep_state, calendar_quick_add, recipe_lookup, run_agent, new_session, move_session, search, create_research, close_session
+  - Confidence threshold (0.7) + margin (0.15) for execute/clarify/claude action
+  - Audit log to log/routing.md
+- Created `backend/sunny/llm/gateway.py` — Claude API gateway:
+  - Semaphore for concurrent calls (1 awake, 2 during sleep)
+  - Daily ($10) and monthly ($100) spend caps
+  - Sleep sub-budget (30% of daily cap)
+  - Auth latch (permanent on AuthenticationError)
+  - Connection error message protection (logs type only, not message)
+  - Usage logging to log/llm-usage.md
+  - Streaming chat support via SSE-like async generator
+  - JSON-schema mode for structured outputs
+- Created `backend/sunny/llm/prompt_assembly.py` — prompt builder:
+  - Assembly order: system prompt + profile + personal-context + project-context + retrieved chunks + session history + message
+  - Token-budgeted sections (profile: 500, context: 1500, etc.)
+  - Hot-reload from docs/instructions/<purpose>.md
+  - Fallback inline prompts when files missing
+- Created `backend/sunny/llm/tools.py` — chat tool registry:
+  - search, list_sessions, read_session, read_context, list_projects, web_search
+  - web_search gated: only callable when user explicitly asked
+  - Tool specs exposed for LLM system prompt injection
+- Created `backend/sunny/llm/close_hook.py` — session close automation:
+  - LLM call with JSON schema for summary/topics/entities/decisions/open_questions/personal_facts
+  - Writes fields into session frontmatter
+  - Merges into project context.md (sections with caps)
+  - Merges personal_facts into memory/personal-context.md
+  - Re-indexes session, git commits
+  - Falls back to summary_pending=true when LLM unavailable
+- Created `backend/sunny/llm/router.py` — chat API endpoints:
+  - Session CRUD (create, list, append, close) for Home and project sessions
+  - Chat completion endpoint with prompt assembly
+  - Streaming chat endpoint
+  - Session summarize endpoint (triggers close hook)
+- Updated `projects/service.py::close_session()` — integrates with LLM close hook
+- Integrated LLM router into `main.py` app factory
+
+**Test results:** 25 new tests (test_chat.py), 127 total passing
 
 ## P0 Blockers (need human to verify on host)
 

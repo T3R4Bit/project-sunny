@@ -179,7 +179,7 @@ def _extract_params(intent: Intent, message: str, context: dict) -> dict:
         else:
             params["state"] = "sleeping"
 
-    if intent == Intent.CALANDAR_QUICK_ADD:
+    if intent == Intent.CALENDAR_QUICK_ADD:
         # Simple extraction: try to find time pattern
         import re
         time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:am|pm)?)', message, re.IGNORECASE)
@@ -201,7 +201,7 @@ def _log_routing(result: RoutingResult) -> None:
     if result.runner_up:
         runner_str = f"\n  runner_up: {result.runner_up.intent.value} ({round(result.runner_up.confidence, 3)})"
 
-    line = f"[{timestamp}] input=\"{result._last_message or ''[:100]}\" intent={intent_str} confidence={confidence} action={action}{runner_str}\n"
+    line = f"[{timestamp}] input=\"{_last_message or ''[:100]}\" intent={intent_str} confidence={confidence} action={action}{runner_str}\n"
 
     try:
         log_path = Path("vault") / INTENTS_LOG_FILE
