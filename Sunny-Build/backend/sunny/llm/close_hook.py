@@ -25,7 +25,7 @@ from sunny.llm.gateway import MODEL_DEFAULT, chat_completion, SpendStatus
 from sunny.vault.io import read_file, atomic_write
 from sunny.frontmatter import load, dump
 from sunny.index.service import index_text, init_index
-from sunny.config import get_settings
+import sunny.config
 from sunny.extraction.rules_engine import RulesEngine, RulesParser, ExtractionLog, write_fact
 
 log = logging.getLogger(__name__)
@@ -364,7 +364,7 @@ def _run_extraction(transcript: str, session_slug: str) -> None:
     if not transcript.strip():
         return
 
-    settings = get_settings()
+    settings = sunny.config.get_settings()
     vault = settings.vault_path
 
     # Load rules from file
@@ -418,7 +418,7 @@ def _run_extraction(transcript: str, session_slug: str) -> None:
 def _reindex_session(session_slug: str, project_slug: Optional[str], transcript: str) -> None:
     """Re-index the session after summary."""
     try:
-        settings = get_settings()
+        settings = sunny.config.get_settings()
         db_path = Path(settings.db_path)
         init_index(db_path)
         conn = __import__("sqlite3").connect(str(db_path))

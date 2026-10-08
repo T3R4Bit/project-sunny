@@ -9,123 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-# Copy rules from docs to test fixture
-RULES_CONTENT = """---
-name: keaton_name
-tier: 1
-pattern: 'Keaton'
-confidence: 1.0
-output: person
----
----
-name: preference_for_python
-tier: 1
-pattern: '(?:prefer|like|love|want|always use|stick with|use) (?:Python|python)'
-confidence: 0.95
-output: tech_preference
----
----
-name: preference_for_rust
-tier: 1
-pattern: '(?:prefer|like|love|want|always use|stick with|use) (?:Rust|rust)'
-confidence: 0.95
-output: tech_preference
----
----
-name: deadline_mention
-tier: 1
-pattern: '(?:due|deadline|by|before) (?:\\w+ )?(?:the )?(?:next )?(?:week|month|Friday|Thursday|Monday|Wednesday|Tuesday|September|October|November|December|January|February|March|April|May|June|July|August)(?: (?:the )?\\d{1,2})?'
-confidence: 0.9
-output: deadline
-negations:
-  - no deadline
-  - no due date
-  - no fixed deadline
----
----
-name: course_code
-tier: 2
-pattern: '(?:ACCT|CS|ENG|MATH|PHYS|CHEM|BIO|PSY|SOC|HIST|ECON|STAT|BUS|FSAE|ME|ECE)[ ]?\\d{3,4}'
-confidence: 0.95
-output: course
----
----
-name: location_mention
-tier: 2
-pattern: '(?:at|in|from|near|to) (?:the )?(?:library|lab|office|studio|room|building|campus|home|work|shop)'
-confidence: 0.9
-output: location
----
----
-name: meeting_scheduled
-tier: 1
-pattern: '(?:meeting|appoint|office hours|chat) (?:with|and)?(?:\\w+(?:[\\s-]+\\w+)*)?'
-confidence: 0.85
-output: meeting
----
----
-name: sleep_duration_mention
-tier: 1
-pattern: '(?:sleep(?:ed)?|slept|got )\\d+\\.?\\d*\\s*(?:hours?|hrs?|h)'
-confidence: 0.95
-output: sleep_data
----
----
-name: stress_mention
-tier: 1
-pattern: '(?:stress|stressed|anxious|anxiety|worried|concerned|overwhelm|burnout|burning out)'
-confidence: 0.9
-output: stress_indicator
----
----
-name: goal_statement
-tier: 1
-pattern: '(?:want to|going to|planning to|aim to|intend to|plan to|goal is|my goal) to (\\w+(?:[\\s-]+\\w+)*)'
-confidence: 0.85
-output: goal
-negations:
-  - no goal
-  - no plan
----
----
-name: tool_mention
-tier: 2
-pattern: '(?:tool|library|framework|package|use|using|uses) (?:the )?(?:[a-zA-Z][a-zA-Z0-9_-]+)'
-confidence: 0.7
-output: tool_reference
-negations:
-  - don't need a tool
-  - not using any tool
----
----
-name: abbreviation_definition
-tier: 3
-pattern: '(?:abbreviated as|abbreviated to|short for|aka|also known as|stands for) \\w+(?:[\\s-]+\\w+)*'
-confidence: 0.85
-output: abbreviation
----
----
-name: running_reference
-tier: 3
-pattern: '(?:remember when|back when|that time|last time|that one time) (?:I|we|you) [a-zA-Z\\s,.-]+'
-confidence: 0.7
-output: running_reference
----
----
-name: food_preference
-tier: 3
-pattern: '(?:don.t eat|don.t like|dislike|allergic to|avoid|never eat|stop eating) \\w+(?:[\\s-]+\\w+)?'
-confidence: 0.85
-output: food_restriction
----
----
-name: nickname_mention
-tier: 3
-pattern: '(?:call me|call myself|nickname|go by|I.m called) (\\w+)'
-confidence: 0.8
-output: nickname
----
-"""
+# Helper to read rules from docs
+def _get_rules_content():
+    return Path("docs/extraction-rules.md").read_text()
 
 
 @pytest.fixture
@@ -149,7 +35,7 @@ def client(vault: Path):
     docs_dir = vault / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
     rules_path = docs_dir / "extraction-rules.md"
-    rules_path.write_text(RULES_CONTENT, encoding="utf-8")
+    rules_path.write_text(_get_rules_content(), encoding="utf-8")
 
     from sunny.main import create_app
     app = create_app()
@@ -166,7 +52,7 @@ class TestRulesParser:
         """Parser loads valid YAML blocks."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         assert len(rules) == 15
         assert all(r.name for r in rules)
         assert all(r.tier in (1, 2, 3) for r in rules)
@@ -208,7 +94,7 @@ class TestRulesParser:
         """Rule with negations list is parsed correctly."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         deadline = [r for r in rules if r.name == "deadline_mention"][0]
         assert len(deadline.negations) == 3
         assert "no deadline" in deadline.negations
@@ -226,7 +112,7 @@ class TestRulesParser:
         """Rules have correct tier assignments."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         tier_map = {r.name: r.tier for r in rules}
         assert tier_map["keaton_name"] == 1
         assert tier_map["course_code"] == 2
@@ -236,8 +122,7 @@ class TestRulesParser:
         """Rules can have examples."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
-        # Some rules have examples defined
+        rules = parser.parse(_get_rules_content())
         assert all(hasattr(r, 'examples') for r in rules)
 
 
@@ -331,7 +216,7 @@ class TestRulesEngine:
         """Real rules match on full transcripts."""
         from sunny.extraction.rules_engine import RulesParser, RulesEngine
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         engine = RulesEngine(rules)
 
         transcript = "I prefer Python for this project and ACCT 2100 is hard."
@@ -411,19 +296,17 @@ class TestExtractionIntegration:
         mock_settings.db_path = str(vault / ".sunny" / "sunny.db")
         mock_settings.admin_password_hash = ""
         mock_settings.log_level = "info"
-        # Import close_hook first, then patch it directly
-        from sunny.llm import close_hook
-        close_hook.get_settings = lambda: mock_settings
+        import sunny.config
+        sunny.config.get_settings = lambda: mock_settings
 
     def test_extraction_runs_on_close_hook(self, vault: Path):
         """run_close_hook triggers extraction rules engine."""
         self._setup_mock_settings(vault)
-        
-        # Set up rules in vault
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
-        
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
+
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
 
@@ -456,10 +339,10 @@ class TestExtractionIntegration:
     def test_extraction_finds_course_code(self, vault: Path):
         """Course code pattern matches and gets extracted."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -480,10 +363,10 @@ class TestExtractionIntegration:
     def test_extraction_finds_goal(self, vault: Path):
         """Goal statement pattern matches."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -502,10 +385,10 @@ class TestExtractionIntegration:
     def test_extraction_finds_stress(self, vault: Path):
         """Stress mention pattern matches."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -533,10 +416,10 @@ class TestExtractionIntegration:
     def test_extraction_auto_writes_facts(self, vault: Path):
         """Auto-written facts appear in memory/facts/."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -559,10 +442,10 @@ class TestExtractionIntegration:
     def test_extraction_runs_twice_no_duplicate(self, vault: Path):
         """Running extraction twice doesn't duplicate facts."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -587,10 +470,10 @@ class TestExtractionIntegration:
     def test_extraction_log_has_timestamps(self, vault: Path):
         """Extraction log has timestamped entries."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -612,10 +495,10 @@ class TestExtractionIntegration:
     def test_extraction_logs_rule_name(self, vault: Path):
         """Extraction log entries include rule name."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -635,10 +518,10 @@ class TestExtractionIntegration:
     def test_extraction_session_slug_in_log(self, vault: Path):
         """Session slug appears in extraction log."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -649,7 +532,7 @@ class TestExtractionIntegration:
                 "decisions": [], "open_questions": [], "personal_facts": [],
             }
             run_close_hook("unique-session-abc-123",
-                session_transcript="I want to improve sleep.")
+                session_transcript="I want to improve sleep. I slept 6 hours last night.")
 
         extraction_log = vault / "log" / "extraction.md"
         content_log = extraction_log.read_text()
@@ -658,10 +541,10 @@ class TestExtractionIntegration:
     def test_extraction_finds_deadline(self, vault: Path):
         """Deadline pattern matches."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -682,7 +565,7 @@ class TestExtractionIntegration:
         """Normal match allowed when no negation text."""
         from sunny.extraction.rules_engine import RulesParser, RulesEngine
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         engine = RulesEngine(rules)
 
         matches = engine.match("due next Friday for the project", "test-session")
@@ -692,10 +575,10 @@ class TestExtractionIntegration:
     def test_extraction_log_has_gate(self, vault: Path):
         """Extraction log includes gate level."""
         self._setup_mock_settings(vault)
-        
+
         docs_dir = vault / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        docs_dir.joinpath("extraction-rules.md").write_text(RULES_CONTENT)
+        docs_dir.joinpath("extraction-rules.md").write_text(_get_rules_content())
 
         from unittest.mock import patch
         from sunny.llm.close_hook import run_close_hook
@@ -711,6 +594,7 @@ class TestExtractionIntegration:
         extraction_log = vault / "log" / "extraction.md"
         content_log = extraction_log.read_text()
         assert "auto_write" in content_log or "approve_queue" in content_log or "log_only" in content_log
+
 
 # ── write_fact tests ──────────────────────────────────────────────────
 
@@ -766,7 +650,7 @@ class TestAllStarterRules:
         """Every rule's examples produce at least one match."""
         from sunny.extraction.rules_engine import RulesParser, RulesEngine
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         engine = RulesEngine(rules)
 
         failures = []
@@ -783,7 +667,7 @@ class TestAllStarterRules:
         """Every rule's negation patterns prevent matching."""
         from sunny.extraction.rules_engine import RulesParser, RulesEngine
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         engine = RulesEngine(rules)
 
         failures = []
@@ -800,14 +684,14 @@ class TestAllStarterRules:
         """Exactly 15 starter rules loaded."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         assert len(rules) == 15
 
     def test_rules_cover_all_tiers(self):
         """Rules span all three tiers."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         tiers = {r.tier for r in rules}
         assert tiers == {1, 2, 3}
 
@@ -815,7 +699,7 @@ class TestAllStarterRules:
         """Tier 1 (Keaton-specific) has multiple rules."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         tier1 = [r for r in rules if r.tier == 1]
         assert len(tier1) >= 5
 
@@ -823,7 +707,7 @@ class TestAllStarterRules:
         """Tier 2 (contextual) has multiple rules."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         tier2 = [r for r in rules if r.tier == 2]
         assert len(tier2) >= 2
 
@@ -831,6 +715,6 @@ class TestAllStarterRules:
         """Tier 3 (personality) has multiple rules."""
         from sunny.extraction.rules_engine import RulesParser
         parser = RulesParser()
-        rules = parser.parse(RULES_CONTENT)
+        rules = parser.parse(_get_rules_content())
         tier3 = [r for r in rules if r.tier == 3]
         assert len(tier3) >= 3

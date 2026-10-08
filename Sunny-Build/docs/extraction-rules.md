@@ -80,7 +80,7 @@ description: Scheduled meetings or appointments
 ---
 name: sleep_duration_mention
 tier: 1
-pattern: '(?:sleep(?:ed)?|slept|got )\d+\.?\d*\s*(?:hours?|hrs?|h)'
+pattern: '(?:sleep(?:ed)?|slept|got)?\s*\d+\.?\d*\s*(?:hours?|hrs?|h)'
 confidence: 0.95
 output: sleep_data
 description: Stated sleep duration

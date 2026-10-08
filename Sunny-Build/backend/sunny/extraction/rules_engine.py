@@ -160,7 +160,7 @@ class RulesEngine:
         # Pre-compile patterns on init
         for rule in self.rules:
             try:
-                self._compiled[rule.name] = re.compile(rule.pattern)
+                self._compiled[rule.name] = re.compile(rule.pattern, re.IGNORECASE)
             except re.error:
                 log.warning("Cannot compile pattern for rule %s, skipping", rule.name)
 
