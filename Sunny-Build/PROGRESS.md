@@ -305,4 +305,11 @@ Must finish:
 - `tests/test_p9_p10_p11_p12_p13.py` — P9-P13 (59 tests)
 
 ### Full Suite Result
-337 tests passing. All green.
+350 tests passing. All green. (+13 new optimization tests)
+
+### Voice Pipeline Optimizations (Oct 9, 2026)
+- **STT model caching** — Whisper model loaded once in `__init__` via `_preload_stt()`, reused across all `transcribe()` calls. Default model changed from "small" to "tiny" (50MB vs 150MB, ~3x faster).
+- **Wake word regex pre-compilation** — All regex patterns pre-compiled in `__init__`, stored in `_compiled_patterns` dict. `detect()` uses cached patterns — zero regex parse overhead after first call.
+- **TTS via edge-tts** — Added `synthesize()` method using `edge-tts` library (free, neural voices, no API key). Returns `.mp3` file path. Gracefully degrades when edge-tts unavailable.
+- **History cap** — `_max_history` parameter (default 50) auto-trims `_interaction_history` after each `process_voice_input()`. Prevents memory leak.
+- **Duration tracking** — Each `VoiceInteraction` now tracks `duration_seconds` from user input to LLM response.

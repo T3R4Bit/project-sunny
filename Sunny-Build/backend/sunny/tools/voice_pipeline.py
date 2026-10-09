@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,15 +33,22 @@ class VoicePipeline:
     def __init__(
         self,
         vault: Path,
-        stt_model: str = "whisper-small",
+        stt_model: str = "tiny",
         tts_voice: str = "default",
         wake_word: str = "sunny",
+        max_history: int = 50,
+        preload_stt: bool = True,
     ) -> None:
         self.vault = vault
         self.stt_model = stt_model
         self.tts_voice = tts_voice
         self.wake_word = wake_word.lower()
+        self._max_history = max_history
         self._interaction_history: list[VoiceInteraction] = []
+        self._stt_model_obj: Optional[Any] = None
+        self._stt_loading = False
+        self._stt_load_time: Optional[float] = None
+        self._tts_available = True
 
     @property
     def interaction_history(self) -> list[VoiceInteraction]:
@@ -49,7 +57,30 @@ class VoicePipeline:
     @property
     def is_configured(self) -> bool:
         """Check if voice pipeline has required components."""
-        return True  # Can work with just text input
+        return True
+
+    def _preload_stt(self) -> None:
+        """Load the STT model into memory (cached)."""
+        if self._stt_model_obj is not None:
+            return
+        if self._stt_loading:
+            return
+        self._stt_loading = True
+        try:
+            import whisper
+            start = time.monotonic()
+            self._stt_model_obj = whisper.load_model(self.stt_model)
+            elapsed = time.monotonic() - start
+            self._stt_load_time = elapsed
+            log.info("STT model '%s' loaded in %.1fs", self.stt_model, elapsed)
+        except ImportError:
+            log.warning("STT dependencies not installed (whisper/speech_recognition)")
+            self._stt_model_obj = None
+        except Exception as e:
+            log.error("Failed to load STT model: %s", e)
+            self._stt_model_obj = None
+        finally:
+            self._stt_loading = False
 
     def detect_wake_word(self, text: str) -> bool:
         """Check if text contains the wake word."""
@@ -67,15 +98,22 @@ class VoicePipeline:
 
         if audio_data:
             try:
-                import speech_recognition as sr
-                # Use Whisper if available
                 import whisper
-                model = whisper.load_model(self.stt_model)
-                result = model.transcribe(audio_data)
-                return result["text"].strip()
             except ImportError:
                 log.warning("STT dependencies not installed, returning empty")
                 return ""
+
+            if self._stt_model_obj is None:
+                self._preload_stt()
+
+            if self._stt_model_obj is not None:
+                try:
+                    result = self._stt_model_obj.transcribe(audio_data)
+                    return result["text"].strip()
+                except Exception as e:
+                    log.error("Transcription failed: %s", e)
+                    return ""
+            return ""
 
         return ""
 
@@ -88,19 +126,26 @@ class VoicePipeline:
         if not transcript.strip():
             return ""
 
+        start = time.monotonic()
         interaction = VoiceInteraction(transcript=transcript)
 
-        # Route through LLM if available
         response = await self._call_llm(transcript, context or {})
         interaction.response = response
         interaction.is_question = transcript.strip().endswith("?")
+        interaction.duration_seconds = round(time.monotonic() - start, 2)
 
         self._interaction_history.append(interaction)
+        self._trim_history()
 
-        # Save interaction to vault
         self._save_interaction(interaction)
 
         return response
+
+    def _trim_history(self) -> None:
+        """Trim interaction history to max_history."""
+        if len(self._interaction_history) > self._max_history:
+            excess = len(self._interaction_history) - self._max_history
+            self._interaction_history = self._interaction_history[excess:]
 
     async def _call_llm(self, transcript: str, context: dict) -> str:
         """Call the LLM with the transcript."""
@@ -112,7 +157,6 @@ class VoicePipeline:
                 {"role": "user", "content": transcript},
             ]
 
-            # Use a simple synchronous approach for voice
             result = await chat_completion(messages, model="claude-sonnet-4-20250514")
 
             if result and isinstance(result, dict):
@@ -138,6 +182,44 @@ class VoicePipeline:
             return "I'll help you set a reminder."
         else:
             return "I'm here to help. What can I do for you?"
+
+    def synthesize(self, text: str, output_dir: Optional[Path] = None) -> Optional[Path]:
+        """Convert text to speech (TTS). Returns path to audio file or None."""
+        if not text.strip():
+            return None
+
+        if not self._tts_available:
+            return None
+
+        try:
+            import edge_tts
+        except ImportError:
+            if self._tts_available:
+                self._tts_available = False
+                log.warning("edge-tts not installed; TTS unavailable. pip install edge-tts")
+            return None
+
+        tts_dir = output_dir or (self.vault / "data" / "voice" / "tts")
+        tts_dir.mkdir(parents=True, exist_ok=True)
+
+        voice_map = {
+            "default": "en-US-AriaNeural",
+            "male": "en-US-GuyNeural",
+            "female": "en-US-AriaNeural",
+        }
+        voice = voice_map.get(self.tts_voice, "en-US-AriaNeural")
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        filename = f"tts-{timestamp}.mp3"
+        output_path = tts_dir / filename
+
+        try:
+            asyncio.run(edge_tts.communicate(text, voice, str(output_path)))
+            log.info("TTS synthesized %d chars -> %s", len(text), output_path)
+            return output_path
+        except Exception as e:
+            log.error("TTS synthesis failed: %s", e)
+            return None
 
     def _save_interaction(self, interaction: VoiceInteraction) -> None:
         """Save voice interaction to vault."""

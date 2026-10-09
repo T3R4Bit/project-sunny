@@ -356,6 +356,118 @@ class TestWakeWordDetector:
         assert stats["detection_count"] == 0
         assert stats["last_detection"] is None
 
+    def test_precompiled_patterns(self):
+        from sunny.tools.wake_word import WakeWordDetector
+        detector = WakeWordDetector()
+        assert detector.detect("sunny")
+        assert len(detector._compiled_patterns) > 0
+        assert len(detector._compiled_substrings) > 0
+
+    def test_pattern_caching_after_add(self):
+        from sunny.tools.wake_word import WakeWordDetector
+        detector = WakeWordDetector()
+        detector.add_wake_word("hello")
+        assert "hello" in detector._compiled_substrings
+        assert "hello" in detector.wake_words
+
+    def test_pattern_cleanup_after_remove(self):
+        from sunny.tools.wake_word import WakeWordDetector
+        detector = WakeWordDetector(wake_words=["custom"])
+        detector.detect("custom word")
+        detector.remove_wake_word("custom")
+        assert "custom" not in detector._compiled_patterns
+        assert "custom" not in detector._compiled_substrings
+        assert "custom" not in detector.wake_words
+
+    def test_detection_count_increments(self):
+        from sunny.tools.wake_word import WakeWordDetector
+        detector = WakeWordDetector()
+        detector.detect("Sunny")
+        detector.detect("sunny again")
+        stats = detector.get_stats()
+        assert stats["detection_count"] == 2
+
+
+class TestVoicePipelineOptimized:
+    """Test optimized voice pipeline features."""
+
+    def test_model_preload_caching(self, vault: Path):
+        from sunny.tools.voice_pipeline import VoicePipeline
+        pipeline = VoicePipeline(vault)
+        assert pipeline._stt_model_obj is None
+        assert not pipeline._stt_loading
+
+    def test_stt_model_default_tiny(self, vault: Path):
+        from sunny.tools.voice_pipeline import VoicePipeline
+        pipeline = VoicePipeline(vault)
+        assert pipeline.stt_model == "tiny"
+
+    def test_max_history_default(self, vault: Path):
+        from sunny.tools.voice_pipeline import VoicePipeline
+        pipeline = VoicePipeline(vault)
+        assert pipeline._max_history == 50
+
+    def test_trim_history(self, vault: Path):
+        from sunny.tools.voice_pipeline import VoicePipeline, VoiceInteraction
+        from datetime import datetime, timezone
+
+        pipeline = VoicePipeline(vault, max_history=3)
+        for i in range(5):
+            interaction = VoiceInteraction(
+                transcript=f"Input {i}",
+                response=f"Response {i}",
+                timestamp=datetime(2026, 1, i + 1, tzinfo=timezone.utc),
+            )
+            pipeline._interaction_history.append(interaction)
+
+        pipeline._trim_history()
+        assert len(pipeline._interaction_history) == 3
+        assert pipeline._interaction_history[0].transcript == "Input 2"
+
+    def test_interaction_duration_tracking(self, vault: Path):
+        import asyncio
+        from sunny.tools.voice_pipeline import VoicePipeline
+
+        pipeline = VoicePipeline(vault)
+        asyncio.run(pipeline.process_voice_input("Hello"))
+        last = pipeline.get_last_interaction()
+        assert last.duration_seconds >= 0
+
+    def test_synthesize_no_edge_tts(self, vault: Path):
+        import subprocess
+        subprocess.run(["pip", "uninstall", "-y", "edge-tts"],
+                       capture_output=True, check=False)
+
+        from sunny.tools.voice_pipeline import VoicePipeline
+        pipeline = VoicePipeline(vault)
+
+        result = pipeline.synthesize("Hello world")
+        assert result is None
+
+        subprocess.run(["pip", "install", "edge-tts"],
+                       capture_output=True, check=True)
+
+    def test_tts_available_flag(self, vault: Path):
+        from sunny.tools.voice_pipeline import VoicePipeline
+        pipeline = VoicePipeline(vault)
+        assert pipeline._tts_available is True
+
+    def test_synthesize_empty_text(self, vault: Path):
+        from sunny.tools.voice_pipeline import VoicePipeline
+        pipeline = VoicePipeline(vault)
+        result = pipeline.synthesize("")
+        assert result is None
+        result = pipeline.synthesize("   ")
+        assert result is None
+
+    def test_voice_interaction_timestamp(self, vault: Path):
+        import asyncio
+        from sunny.tools.voice_pipeline import VoicePipeline
+        pipeline = VoicePipeline(vault)
+        asyncio.run(pipeline.process_voice_input("Test"))
+        last = pipeline.get_last_interaction()
+        assert last.timestamp is not None
+
 
 # ── P12 — Ideas & Recipes ─────────────────────────────────────────────
 
