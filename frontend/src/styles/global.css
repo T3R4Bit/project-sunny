@@ -1,0 +1,325 @@
+/**
+ * Sunny V2 — design tokens and CSS variables.
+ *
+ * Neo-brutalism with selective Y2K: crisp white/light silver, hard black borders,
+ * offset solid shadows, no blur, no soft gradients.
+ *
+ * Accents (semantic):
+ *   #f7d101 optic yellow — CTAs, highlights, focus
+ *   #2596be cyan         — Sunny, system state, data
+ *   #c80f67 magenta      — priority, alerts, volatility
+ */
+
+:root {
+  /* Base */
+  --bg: #ffffff;
+  --bg-secondary: #f0f0f0;
+  --bg-tertiary: #e0e0e0;
+  --text: #0a0a0a;
+  --text-secondary: #555555;
+  --text-muted: #888888;
+  --border: #0a0a0a;
+  --border-light: #cccccc;
+
+  /* Accent */
+  --accent-yellow: #f7d101;
+  --accent-cyan: #2596be;
+  --accent-magenta: #c80f67;
+
+  /* Shadows */
+  --shadow: 3px 3px 0 var(--border);
+  --shadow-sm: 2px 2px 0 var(--border);
+  --shadow-lg: 5px 5px 0 var(--border);
+
+  /* Typography */
+  --font-ui: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* Border radius */
+  --radius: 0; /* brutalist — no rounding */
+
+  /* Z-index */
+  --z-overlay: 100;
+  --z-modal: 200;
+}
+
+/* Dark mode for Can't Sleep */
+.dark {
+  --bg: #1a1a1a;
+  --bg-secondary: #2a2a2a;
+  --bg-tertiary: #333333;
+  --text: #e0e0e0;
+  --text-secondary: #aaaaaa;
+  --text-muted: #777777;
+  --border: #555555;
+  --border-light: #444444;
+}
+
+/* Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Brutalist button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: none;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.btn:hover {
+  box-shadow: var(--shadow);
+  transform: translate(-1px, -1px);
+}
+
+.btn:active {
+  box-shadow: var(--shadow-sm);
+  transform: translate(2px, 2px);
+}
+
+.btn-primary {
+  background: var(--accent-yellow);
+}
+
+.btn-danger {
+  background: var(--accent-magenta);
+  color: white;
+}
+
+.btn-sm {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 12px;
+}
+
+/* Card */
+.card {
+  border: 2px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  padding: var(--space-md);
+}
+
+/* Input */
+input, textarea, select {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding: var(--space-sm) var(--space-md);
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  width: 100%;
+  box-shadow: var(--shadow-sm);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px rgba(37, 150, 190, 0.3);
+}
+
+/* Mono text for data/logs */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Layout */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-md);
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.gap-sm {
+  gap: var(--space-sm);
+}
+
+.gap-md {
+  gap: var(--space-md);
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.w-full {
+  width: 100%;
+}
+
+/* Header */
+.header {
+  border-bottom: 2px solid var(--border);
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+/* Nav */
+.nav {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.nav a {
+  display: block;
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--text);
+  text-decoration: none;
+  border: 2px solid transparent;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nav a:hover,
+.nav a.active {
+  border-color: var(--accent-cyan);
+  background: rgba(37, 150, 190, 0.1);
+}
+
+/* Chat message */
+.chat-message {
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-sm);
+  border-left: 3px solid var(--accent-cyan);
+  background: var(--bg-secondary);
+}
+
+.chat-message.user {
+  border-left-color: var(--accent-yellow);
+}
+
+.chat-message .role {
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.chat-message .content {
+  margin-top: var(--space-xs);
+  white-space: pre-wrap;
+}
+
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  text-transform: uppercase;
+}
+
+.badge-live {
+  background: var(--accent-yellow);
+}
+
+.badge-closed {
+  background: var(--bg-tertiary);
+}
+
+.badge-alert {
+  background: var(--accent-magenta);
+  color: white;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: var(--space-xl);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* List */
+.list-item {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.list-item:last-child {
+  border-bottom: none;
+}
+
+/* Search input highlight */
+mark {
+  background: var(--accent-yellow);
+  padding: 0 2px;
+  border: 1px solid var(--border);
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-sm);
+  }
+
+  .header h1 {
+    font-size: 16px;
+  }
+
+  .nav a {
+    font-size: 11px;
+    padding: var(--space-xs) 4px;
+  }
+}

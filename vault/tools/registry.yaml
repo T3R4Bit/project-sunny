@@ -1,0 +1,146 @@
+---
+create_calendar_event:
+  created: ''
+  creator: system
+  description: Create a new calendar event.
+  failure: 0
+  parameters:
+    end:
+      type: string
+    start:
+      type: string
+    title:
+      type: string
+  status: active
+  success: 0
+  version: 1.0.0
+create_task:
+  created: ''
+  creator: system
+  description: Create a new task in the agent task queue.
+  failure: 0
+  parameters:
+    description:
+      type: string
+    priority:
+      default: 2
+      type: integer
+  status: active
+  success: 0
+  version: 1.0.0
+fetch_calendar:
+  created: ''
+  creator: system
+  description: Fetch upcoming calendar events from CalDAV.
+  failure: 0
+  parameters:
+    count:
+      default: 7
+      type: integer
+  status: active
+  success: 0
+  version: 1.0.0
+fetch_test_data:
+  created: ''
+  creator: agent
+  description: Fetch test data from fixtures
+  failure: 0
+  parameters:
+    query:
+      type: string
+  status: active
+  success: 0
+  version: 1.0.0
+get_page_3:
+  created: ''
+  creator: agent
+  description: Get page 3
+  failure: 0
+  parameters: {}
+  status: active
+  success: 0
+  version: 1.0.0
+log_to_vault:
+  created: ''
+  creator: system
+  description: Append a log entry to the vault.
+  failure: 0
+  parameters:
+    entry:
+      type: string
+    kind:
+      default: agent
+      type: string
+  status: active
+  success: 0
+  version: 1.0.0
+notify:
+  created: ''
+  creator: system
+  description: Send a notification at the specified tier.
+  failure: 0
+  parameters:
+    message:
+      type: string
+    tier:
+      default: SILENT
+      type: string
+  status: active
+  success: 0
+  version: 1.0.0
+read_session:
+  created: ''
+  creator: system
+  description: Read a session transcript from the vault.
+  failure: 0
+  parameters:
+    id:
+      type: string
+    project:
+      nullable: true
+      type: string
+  status: active
+  success: 0
+  version: 1.0.0
+registry_test_tool:
+  created: ''
+  creator: agent
+  description: Test tool in registry
+  failure: 0
+  parameters: {}
+  status: active
+  success: 0
+  version: 1.0.0
+search:
+  created: ''
+  creator: system
+  description: Search the vault index.
+  failure: 0
+  parameters:
+    k:
+      default: 8
+      type: integer
+    query:
+      type: string
+  status: active
+  success: 0
+  version: 1.0.0
+sync_nextcloud_to_google:
+  created: ''
+  creator: system
+  description: Sync calendar events from Nextcloud to Google Calendar.
+  failure: 0
+  parameters: {}
+  status: active
+  success: 0
+  version: 1.0.0
+vault_test_tool:
+  created: ''
+  creator: agent
+  description: Test tool for vault
+  failure: 0
+  parameters: {}
+  status: active
+  success: 0
+  version: 1.0.0
+---

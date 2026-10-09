@@ -1,0 +1,104 @@
+services:
+  sunny:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sunny
+    ports:
+      - "8080:8080"
+    volumes:
+      - sunny-data:/data/sunny-vault
+      - sunny-secrets:/app/.sunny/secrets:ro
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64M
+      - /app/.sunny:noexec,nosuid,size=16M
+    read_only: true
+    user: dev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - SUNNY_VAULT_PATH=/data/sunny-vault
+    depends_on:
+      syncthing:
+        condition: service_started
+      nextcloud:
+        condition: service_started
+    labels:
+      sunny.service: "true"
+      sunny.team: "pc"
+      sunny.role: "backend"
+    networks:
+      - sunny
+
+  syncthing:
+    image: syncthing/syncthing:latest
+    container_name: syncthing
+    ports:
+      - "8384:8384"
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+    volumes:
+      - syncthing-data:/var/syncthing
+    environment:
+      - PCS_ADDR=off
+    labels:
+      sunny.service: "true"
+      sunny.team: "pc"
+      sunny.role: "sync"
+    networks:
+      - sunny
+
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    ports:
+      - "8082:80"
+    volumes:
+      - nextcloud-data:/var/www/html
+      - nextcloud-db:/var/www/html/data
+    environment:
+      - MYSQL_ROOT_PASSWORD=...
+      - MYSQL_PASSWORD=...
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_HOST=/var/run/mysqld/mysqld.sock
+    depends_on:
+      nextcloud-db:
+        condition: service_started
+    labels:
+      sunny.service: "true"
+      sunny.team: "pc"
+      sunny.role: "calendar"
+    networks:
+      - sunny
+
+  nextcloud-db:
+    image: mariadb:11
+    container_name: nextcloud-db
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - nextcloud-db:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=...
+      - MYSQL_PASSWORD=...
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+    labels:
+      sunny.service: "true"
+      sunny.team: "pc"
+      sunny.role: "db"
+    networks:
+      - sunny
+
+volumes:
+  sunny-data:
+  sunny-secrets:
+  syncthing-data:
+  nextcloud-data:
+  nextcloud-db:
+
+networks:
+  sunny:
+    driver: bridge
