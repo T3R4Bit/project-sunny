@@ -54,7 +54,7 @@ export default function SessionPage({ sessionId, projectSlug }: { sessionId?: st
   }
 
   return (
-    <div className="page">
+    <div className="page chat-page">
       <div className="page-head" style={{ marginBottom: 12 }}>
         <div>
           <h1>{projectSlug ? projectSlug : 'Chat'}</h1>

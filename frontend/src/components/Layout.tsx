@@ -41,7 +41,18 @@ export default function Layout({
         </button>
       </aside>
 
-      <div className="main">{children}</div>
+      <div className="main">
+        <header className="topbar">
+          <div className="brand">
+            <span className="brand-mark"><Icon name="sun" size={17} /></span>
+            Sunny
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onLogout} aria-label="Log out">
+            <Icon name="logout" size={19} />
+          </button>
+        </header>
+        {children}
+      </div>
 
       <nav className="tabbar">
         {NAV.map(n => (

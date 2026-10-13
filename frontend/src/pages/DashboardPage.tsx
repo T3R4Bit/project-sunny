@@ -228,8 +228,27 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         {/* Tailscale */}
         <Card title="Tailscale devices" icon="network" className="col-8"
               right={<span className="muted small">{ts.version ? `v${ts.version.split('-')[0]}` : ''}</span>}>
-          {ts.peers ? (
-            <div className="table-wrap">
+          {ts.peers ? (<>
+            <div className="list only-mobile">
+              {devices.map((d: any) => (
+                <div className="list-row" key={d.dns || d.name}>
+                  <span className={`dot ${d.online ? 'ok' : ''}`} />
+                  <div className="grow">
+                    <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                      <span className="name">{d.name}</span>
+                      {d.self && <span className="pill">this server</span>}
+                      {d.shared && <span className="pill">shared</span>}
+                    </div>
+                    <div className="meta truncate">
+                      {osLabel(d.os)} · <span className="mono">{d.ip}</span>
+                      {!d.self && d.online ? ` · ${d.direct ? 'direct' : 'relay'}` : ''}
+                    </div>
+                  </div>
+                  <span className="muted small">{d.online ? 'online' : ago(d.last_seen)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="table-wrap only-desktop">
               <table className="table">
                 <thead><tr><th>Device</th><th className="hide-sm">OS</th><th>IP</th><th className="hide-sm">Path</th><th>Last seen</th></tr></thead>
                 <tbody>
@@ -253,7 +272,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                 </tbody>
               </table>
             </div>
-          ) : <Unavailable what="Tailscale" error={ts.error || host.reason} />}
+          </>) : <Unavailable what="Tailscale" error={ts.error || host.reason} />}
         </Card>
 
         {/* Minecraft */}
