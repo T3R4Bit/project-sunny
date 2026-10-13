@@ -2,16 +2,18 @@ import { useEffect, useState, useRef } from 'react';
 import { api } from '../utils/api';
 import { Session } from '../types';
 import { useChat } from '../hooks/useChat';
+import Icon from '../components/Icon';
 
 export default function SessionPage({ sessionId, projectSlug }: { sessionId?: string; projectSlug?: string }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [current, setCurrent] = useState<string | null>(sessionId || null);
   const { messages, streaming, error, send } = useChat(current, projectSlug);
   const [input, setInput] = useState('');
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   async function loadSessions() {
@@ -48,63 +50,79 @@ export default function SessionPage({ sessionId, projectSlug }: { sessionId?: st
     // First message with no session open starts one, titled from the message
     const slug = current || await createSession(text.slice(0, 50));
     if (slug) await send(text, slug);
+    inputRef.current?.focus();
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '75vh' }}>
-      <div style={{ padding: '8px 0', borderBottom: '2px solid var(--border)', display: 'flex', gap: '8px', alignItems: 'center', overflowX: 'auto' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>
-          {projectSlug ? `${projectSlug}:` : 'Chats:'}
-        </span>
-        <button className="btn btn-sm" onClick={() => createSession()}>+ New</button>
-        {sessions.map(s => (
-          <button
-            key={s.slug}
-            className={`badge ${s.status === 'live' ? 'badge-live' : 'badge-closed'}`}
-            style={{ cursor: 'pointer', outline: s.slug === current ? '2px solid var(--text)' : 'none', whiteSpace: 'nowrap' }}
-            onClick={() => setCurrent(s.slug)}
-            title={s.summary || s.title}
-          >
-            {s.title || s.slug}
-          </button>
-        ))}
+    <div className="page">
+      <div className="page-head" style={{ marginBottom: 12 }}>
+        <div>
+          <h1>{projectSlug ? projectSlug : 'Chat'}</h1>
+          <div className="sub">{projectSlug ? 'Project conversation' : 'Talk to Sunny'}</div>
+        </div>
+        <button className="btn btn-sm" onClick={() => { setCurrent(null); inputRef.current?.focus(); }}>
+          <Icon name="plus" size={15} /> New chat
+        </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {messages.length === 0 && (
-          <div className="empty-state">
-            {projectSlug ? `Chat in project "${projectSlug}".` : 'Start a conversation.'}
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`chat-message ${m.role === 'Keaton' ? 'user' : ''}`}>
-            <div className="role">{m.role}</div>
-            <div className="content" style={{ whiteSpace: 'pre-wrap' }}>
-              {m.content || (streaming && i === messages.length - 1 ? '…' : '')}
-            </div>
-          </div>
-        ))}
-        <div ref={chatEndRef} />
-      </div>
-
-      {error && (
-        <div style={{ padding: '8px', background: 'var(--accent-magenta)', color: 'white', fontSize: 12 }}>
-          {error}
+      {sessions.length > 0 && (
+        <div className="chips" style={{ marginBottom: 12 }}>
+          {sessions.map(s => (
+            <button
+              key={s.slug}
+              className={`chip ${s.slug === current ? 'active' : ''}`}
+              onClick={() => setCurrent(s.slug)}
+              title={s.summary || s.title}
+            >
+              <span className={`dot ${s.status === 'live' ? 'ok' : ''}`} style={{ width: 6, height: 6, boxShadow: 'none' }} />
+              <span className="truncate">{s.title || s.slug}</span>
+            </button>
+          ))}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '8px', padding: '8px 0', alignItems: 'flex-end' }}>
-        <textarea
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-          }}
-          placeholder="Message Sunny..."
-          rows={2}
-          style={{ flex: 1, resize: 'none' }}
-        />
-        <button className="btn btn-primary" onClick={handleSend} disabled={streaming}>Send</button>
+      <div className="chat">
+        <div className="chat-scroll">
+          {messages.length === 0 && (
+            <div className="empty">
+              <div className="brand-mark" style={{ width: 44, height: 44, margin: '0 auto 12px', borderRadius: 12 }}>
+                <Icon name="sun" size={24} />
+              </div>
+              {current ? 'No messages yet.' : 'Start a new conversation.'}
+            </div>
+          )}
+          {messages.map((m, i) => {
+            const me = m.role === 'Keaton';
+            const pending = streaming && i === messages.length - 1 && !m.content;
+            return (
+              <div key={i} className={`msg ${me ? 'me' : ''}`}>
+                <div className="avatar">{me ? 'K' : <Icon name="sun" size={16} />}</div>
+                <div className="bubble">
+                  {pending ? <span className="typing"><i /><i /><i /></span> : m.content}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={endRef} />
+        </div>
+
+        {error && <div className="error-box" style={{ marginBottom: 8 }}>{error}</div>}
+
+        <div className="composer">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+            }}
+            placeholder="Message Sunny…"
+            rows={1}
+          />
+          <button className="btn btn-primary btn-icon" onClick={handleSend} disabled={streaming || !input.trim()} aria-label="Send">
+            <Icon name="send" size={17} />
+          </button>
+        </div>
       </div>
     </div>
   );

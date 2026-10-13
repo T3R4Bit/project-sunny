@@ -5,12 +5,11 @@ export interface Message {
 
 export interface Project {
   slug: string;
-  name: string;
+  title: string;
   description: string;
   status: string;
   tags: string[];
-  created_at: string;
-  updated_at: string;
+  created: string;
 }
 
 export interface Session {

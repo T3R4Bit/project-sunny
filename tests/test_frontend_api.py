@@ -328,3 +328,33 @@ def test_chat_stream_sse(client, monkeypatch):
     assert "".join(json.loads(e)["text"] for e in events[:-1]) == "Hello"
     turns = client.get(f"/chats/sessions/{slug}").json()["turns"]
     assert turns[-1] == {"role": "Sunny", "content": "Hello"}
+
+
+def test_dashboard(client, tmp_path):
+    """/dashboard merges the host collector snapshot with Sunny's own state."""
+    import json
+    from datetime import datetime, timezone
+    import sunny.config as config_mod
+    from sunny.llm import gateway
+
+    gateway._state.auth_latch = False  # another test trips it on purpose
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps({
+        "collected_at": datetime.now(timezone.utc).isoformat(), "interval_s": 20,
+        "host": {"disk_total": 100, "disk_used": 50, "mem_total": 100, "mem_available": 50},
+        "services": [{"name": "minecraft", "active": "failed"}],
+        "containers": [{"name": "sunny", "state": "running"}],
+        "minecraft": {"online": True},
+    }))
+    config_mod.get_settings().host_status_file = status
+
+    data = client.get("/dashboard").json()
+    assert data["host"]["available"] is True and data["host"]["stale"] is False
+    assert data["overall"]["level"] == "warn"
+    assert "minecraft is failed" in data["overall"]["issues"]
+    assert "spend" in data["sunny"]
+
+    status.unlink()
+    data = client.get("/dashboard").json()
+    assert data["host"]["available"] is False
+    assert "Host collector offline" in data["overall"]["issues"]

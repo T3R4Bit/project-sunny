@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { api } from '../utils/api';
+import Icon from '../components/Icon';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState('hybrid');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function search() {
+  async function search(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!query.trim()) return;
     setLoading(true);
     try {
-      const data = await api.search(query, mode);
+      const data = await api.search(query, 'keyword');
       setResults(Array.isArray(data) ? data : []);
     } catch {
       setResults([]);
@@ -21,42 +22,40 @@ export default function SearchPage() {
   }
 
   return (
-    <div>
-      <h2>Search</h2>
-      <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-        <select value={mode} onChange={e => setMode(e.target.value)}>
-          <option value="hybrid">Hybrid (RFM)</option>
-          <option value="keyword">Keyword (FTS5)</option>
-          <option value="semantic">Semantic (Vectors)</option>
-        </select>
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') search(); }}
-          placeholder="Search the vault..."
-          style={{ flex: 1 }}
-        />
-        <button className="btn btn-primary" onClick={search} disabled={loading}>
-          {loading ? 'Searching...' : 'Search'}
+    <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>Search</h1>
+          <div className="sub">Chats, projects and notes in the vault</div>
+        </div>
+      </div>
+
+      <form className="row" style={{ marginBottom: 20 }} onSubmit={search}>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search the vault…" autoFocus />
+        <button className="btn btn-primary" type="submit" disabled={loading || !query.trim()}>
+          <Icon name="search" size={15} /> {loading ? 'Searching' : 'Search'}
         </button>
-      </div>
-      <div style={{ marginTop: '16px' }}>
-        {results.map((r, i) => (
-          <div key={i} className="list-item">
-            <div style={{ flex: 1 }}>
-              <div className="mono">{r.path}</div>
-              <div style={{ fontSize: 13 }}>{r.snippet || r.text || ''}</div>
-              {r.score !== undefined && (
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  score: {r.score.toFixed(4)}
+      </form>
+
+      {results && results.length === 0 && <div className="card empty">No results for "{query}".</div>}
+      {results && results.length > 0 && (
+        <div className="card">
+          <div className="list">
+            {results.map((r, i) => (
+              <div key={i} className="list-row" style={{ alignItems: 'flex-start' }}>
+                <div className="grow">
+                  <div className="row">
+                    <span className="mono truncate">{r.path}</span>
+                    {r.project && <span className="pill">{r.project}</span>}
+                  </div>
+                  <div className="small" style={{ color: 'var(--text-2)', marginTop: 4 }}>{r.snippet || r.text || ''}</div>
                 </div>
-              )}
-            </div>
-            <div className="badge badge-live">{r.kind}</div>
+                <span className="pill">{r.kind}</span>
+              </div>
+            ))}
           </div>
-        ))}
-        {results.length === 0 && query && <div className="empty-state">No results.</div>}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

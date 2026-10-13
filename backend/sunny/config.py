@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     listen_host: str = "0.0.0.0"
     listen_port: int = 8080
     log_level: str = "INFO"
+    host_status_file: Path = Path("/host-status/status.json")  # written by deploy/collector.py
     session_secret: str = ""  # HMAC key for session cookies; generated into secret_dir if empty
     frontend_dir: Path = Field(Path("/app/frontend/dist"),
                                validation_alias=AliasChoices("SUNNY_FRONTEND_DIR", "FRONTEND_DIR"))

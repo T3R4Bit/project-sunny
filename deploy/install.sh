@@ -10,6 +10,26 @@ REPO="$(pwd)"
 [ -f .env ] || { echo ".env missing: copy .env.example to .env and fill it in" >&2; exit 1; }
 chmod 600 .env
 
+echo "== host status collector (feeds the Dashboard page)"
+sudo mkdir -p /home/sunny/sunny-status && sudo chown sunny:sunny /home/sunny/sunny-status
+sudo tee /etc/systemd/system/sunny-collector.service >/dev/null <<EOF
+[Unit]
+Description=Sunny dashboard host status collector
+After=docker.service tailscaled.service
+
+[Service]
+ExecStart=/usr/bin/python3 $REPO/deploy/collector.py
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable sunny-collector.service
+sudo systemctl restart sunny-collector.service
+
 echo "== build + start"
 sudo docker compose up -d --build --remove-orphans
 

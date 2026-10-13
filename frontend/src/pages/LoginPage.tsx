@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../utils/api';
+import Icon from '../components/Icon';
 
 export default function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('');
@@ -22,31 +23,29 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '360px' }}>
-        <h2 style={{ textAlign: 'center', marginBottom: '24px' }}>Sunny Login</h2>
-        <form onSubmit={handleSubmit}>
-          <input type="text" name="username" value="keaton" autoComplete="username" readOnly hidden />
-          <div style={{ marginBottom: '16px' }}>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Password"
-              autoComplete="current-password"
-              autoFocus
-            />
+    <div className="login-wrap">
+      <form className="card login-card stack" onSubmit={handleSubmit}>
+        <div className="row" style={{ gap: 12, marginBottom: 6 }}>
+          <span className="brand-mark" style={{ width: 40, height: 40, borderRadius: 10 }}><Icon name="sun" size={22} /></span>
+          <div>
+            <h1 style={{ fontSize: 20 }}>Sunny</h1>
+            <div className="muted small">Sign in to continue</div>
           </div>
-          {error && (
-            <div style={{ padding: '8px', background: 'var(--accent-magenta)', color: 'white', fontSize: 13, marginBottom: '16px' }}>
-              {error}
-            </div>
-          )}
-          <button className="btn btn-primary w-full" type="submit" disabled={loading}>
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
-        </form>
-      </div>
+        </div>
+        <input type="text" name="username" value="keaton" autoComplete="username" readOnly hidden />
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Password"
+          autoComplete="current-password"
+          autoFocus
+        />
+        {error && <div className="error-box">{error}</div>}
+        <button className="btn btn-primary w-full" type="submit" disabled={loading}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
     </div>
   );
 }

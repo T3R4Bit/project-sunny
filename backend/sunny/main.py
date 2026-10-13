@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from sunny.config import get_settings, Settings
 from sunny.db import init_db
 from sunny.admin import router as admin_router
+from sunny.dashboard import router as dashboard_router
 from sunny.auth import install_auth_middleware, router as auth_router
 from sunny.projects.router import router as projects_router
 from sunny.watcher import start_watcher, stop_watcher
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
 
     # Include admin status
     app.include_router(admin_router)
+    app.include_router(dashboard_router)
 
     mount_frontend(app, get_settings().frontend_dir)
 

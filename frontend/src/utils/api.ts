@@ -25,7 +25,7 @@ export const api = {
 
   // Projects
   projects: () => request('/projects'),
-  createProject: (data: { name: string; description?: string; tags?: string[] }) =>
+  createProject: (data: { slug: string; title: string; tags?: string[] }) =>
     request('/projects', { method: 'POST', body: JSON.stringify(data) }),
   project: (slug: string) => request(`/projects/${slug}`),
   updateProject: (slug: string, data: Partial<{ description: string }>) =>
@@ -105,4 +105,5 @@ export const api = {
 
   // Admin
   adminStatus: () => request('/admin/status'),
+  dashboard: () => request('/dashboard'),
 };

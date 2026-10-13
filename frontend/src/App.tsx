@@ -1,65 +1,44 @@
 import { useState } from 'react';
 import { useAuth } from './hooks/useAuth';
-import Header from './components/Header';
-import HomePage from './pages/HomePage';
+import Layout from './components/Layout';
+import DashboardPage from './pages/DashboardPage';
 import ProjectsPage from './pages/ProjectsPage';
 import SessionPage from './pages/SessionPage';
 import SearchPage from './pages/SearchPage';
 import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
 
-export type Page = 'home' | 'projects' | 'session' | 'search' | 'admin';
+export type Page = 'dashboard' | 'chat' | 'projects' | 'session' | 'search' | 'settings';
 
 export default function App() {
   const { authenticated, loading, logout, check } = useAuth();
-  const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [pageProps, setPageProps] = useState<{ sessionId?: string; projectSlug?: string }>({});
 
   function navigate(page: Page, props?: { sessionId?: string; projectSlug?: string }) {
     setCurrentPage(page);
     setPageProps(props || {});
-  }
-
-  function handleLogout() {
-    logout();
-    navigate('home');
+    window.scrollTo(0, 0);
   }
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <div className="mono">Loading Sunny...</div>
-      </div>
-    );
+    return <div className="login-wrap"><div className="muted">Loading…</div></div>;
   }
 
   if (!authenticated) {
-    return (
-      <div>
-        <LoginPage onLogin={() => { check(); navigate('home'); }} />
-      </div>
-    );
+    return <LoginPage onLogin={() => { check(); navigate('dashboard'); }} />;
   }
 
   return (
-    <div className="app">
-      <Header
-        currentPage={currentPage}
-        onNavigate={(page: string) => navigate(page as Page)}
-        onLogout={handleLogout}
-      />
-      <main className="container" style={{ padding: '16px' }}>
-        {currentPage === 'home' && <HomePage />}
-        {currentPage === 'projects' && <ProjectsPage onNavigate={navigate} />}
-        {currentPage === 'session' && (
-          <SessionPage
-            sessionId={pageProps.sessionId}
-            projectSlug={pageProps.projectSlug}
-          />
-        )}
-        {currentPage === 'search' && <SearchPage />}
-        {currentPage === 'admin' && <AdminPage />}
-      </main>
-    </div>
+    <Layout current={currentPage} onNavigate={navigate} onLogout={() => { logout(); navigate('dashboard'); }}>
+      {currentPage === 'dashboard' && <DashboardPage onNavigate={navigate} />}
+      {currentPage === 'chat' && <SessionPage key="home" />}
+      {currentPage === 'session' && (
+        <SessionPage key={pageProps.projectSlug || 'home'} sessionId={pageProps.sessionId} projectSlug={pageProps.projectSlug} />
+      )}
+      {currentPage === 'projects' && <ProjectsPage onNavigate={navigate} />}
+      {currentPage === 'search' && <SearchPage />}
+      {currentPage === 'settings' && <AdminPage />}
+    </Layout>
   );
 }

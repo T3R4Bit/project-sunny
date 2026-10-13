@@ -161,7 +161,9 @@ class VoicePipeline:
             result = await chat_completion(messages, model=get_settings().model_fast, purpose="voice")
 
             if result and isinstance(result, dict):
-                return result.get("content", result.get("text", "I didn't understand."))
+                if result.get("spend_blocked"):
+                    return "My Claude spend cap has been reached, so I can't answer right now."
+                return result.get("content") or result.get("text") or "I didn't understand."
             return str(result) if result else "I didn't understand."
         except Exception as e:
             log.error("Voice LLM call failed: %s", e)

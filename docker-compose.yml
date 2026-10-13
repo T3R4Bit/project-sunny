@@ -32,6 +32,7 @@ services:
     volumes:
       - sunny-vault:/data/sunny-vault
       - sunny-state:/app/.sunny
+      - ${SUNNY_STATUS_DIR:-/home/sunny/sunny-status}:/host-status:ro   # written by deploy/collector.py
     tmpfs:
       - /tmp:nosuid,size=256M
     read_only: true

@@ -1,30 +1,81 @@
 import { useEffect, useState } from 'react';
 import { api } from '../utils/api';
 
+function Row({ k, v, ok }: { k: string; v: React.ReactNode; ok?: boolean }) {
+  return (
+    <div className="list-row">
+      {ok !== undefined && <span className={`dot ${ok ? 'ok' : ''}`} />}
+      <span className="grow muted">{k}</span>
+      <span>{v}</span>
+    </div>
+  );
+}
+
 export default function AdminPage() {
-  const [status, setStatus] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [s, setS] = useState<any>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.adminStatus()
-      .then(setStatus)
-      .catch(() => setStatus({ error: 'Unable to load admin status' }))
-      .finally(() => setLoading(false));
+    api.adminStatus().then(setS).catch(e => setError(String(e)));
   }, []);
 
-  if (loading) return <div className="card"><div className="mono">Loading admin...</div></div>;
-  if (status?.error) return <div className="card" style={{ borderLeft: '3px solid var(--accent-magenta)' }}>{status.error}</div>;
-
   return (
-    <div>
-      <h2>Admin</h2>
-      <div className="card" style={{ marginTop: '16px' }}>
-        <div className="mono">
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
-            {JSON.stringify(status, null, 2)}
-          </pre>
+    <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>Settings</h1>
+          <div className="sub">Configuration is read from <span className="mono">.env</span> on the server</div>
         </div>
       </div>
+
+      {error && <div className="error-box">{error}</div>}
+      {s && (
+        <div className="grid">
+          <section className="card col-6">
+            <div className="card-head"><div className="card-title">Claude</div></div>
+            <div className="list">
+              <Row k="API key" v={s.integrations.claude ? (s.spend.auth_latch ? 'rejected' : 'configured') : 'missing'} ok={s.integrations.claude && !s.spend.auth_latch} />
+              <Row k="Fast model" v={<span className="mono">{s.models.fast}</span>} />
+              <Row k="Default model" v={<span className="mono">{s.models.default}</span>} />
+              <Row k="Deep model" v={<span className="mono">{s.models.deep}</span>} />
+              <Row k="Daily cap" v={`$${s.spend.daily.toFixed(3)} of $${s.spend.daily_cap}`} />
+              <Row k="Monthly cap" v={`$${s.spend.monthly.toFixed(3)} of $${s.spend.monthly_cap}`} />
+            </div>
+          </section>
+
+          <section className="card col-6">
+            <div className="card-head"><div className="card-title">Integrations</div></div>
+            <div className="list">
+              <Row k="Nextcloud calendar" v={s.integrations.nextcloud ? 'configured' : 'not set up'} ok={s.integrations.nextcloud} />
+              <Row k="Garmin" v={s.integrations.garmin ? 'credentials set' : 'not set up'} ok={s.integrations.garmin} />
+              <Row k="Push notifications" v={s.integrations.push ? 'configured' : 'not set up'} ok={s.integrations.push} />
+            </div>
+            <p className="muted small" style={{ marginBottom: 0 }}>
+              Calendar, Garmin and push have code in the backend but are not connected to any feature yet.
+            </p>
+          </section>
+
+          <section className="card col-6">
+            <div className="card-head"><div className="card-title">Agent</div></div>
+            <div className="list">
+              <Row k="State" v={s.agent.state} ok={s.agent.running} />
+              <Row k="Pending tasks" v={s.agent.task_count} />
+              <Row k="Batches processed" v={s.agent.batch_stats?.total_processed ?? 0} />
+            </div>
+          </section>
+
+          <section className="card col-6">
+            <div className="card-head"><div className="card-title">Vault</div></div>
+            <div className="list">
+              <Row k="Path" v={<span className="mono">{s.vault_path}</span>} />
+              <Row k="Sync conflicts" v={s.sync_conflicts.length} ok={s.sync_conflicts.length === 0} />
+            </div>
+            {s.sync_conflicts.length > 0 && (
+              <ul className="small mono">{s.sync_conflicts.map((c: any) => <li key={c.path}>{c.path}</li>)}</ul>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }

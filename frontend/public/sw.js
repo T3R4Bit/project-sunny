@@ -1,6 +1,6 @@
 // Minimal service worker: makes the PWA installable and keeps the app shell available offline.
 // API calls always go to the network; only same-origin GETs for the shell and built assets are cached.
-const CACHE = 'sunny-shell-v1';
+const CACHE = 'sunny-shell-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.json'])));
