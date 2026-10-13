@@ -26,7 +26,9 @@ BRIEF_PROMPT = """You are Sunny, Keaton's personal assistant, writing his mornin
 Using only the data below, write a short, warm brief in plain prose (no headings, no bullet lists,
 at most 130 words). Lead with what matters most today: events with times, weather that affects plans
 (rain, heat, cold), and anything urgent in email. Mention sleep only if notable. Do not invent
-anything that is not in the data, and skip sections that have no data rather than apologising."""
+anything that is not in the data, and skip sections that have no data rather than apologising.
+Sources listed under "unavailable" were not checked: never say or imply they are empty (do not say
+"no events" or "no emails" when calendar or email is unavailable)."""
 
 
 def _briefs_dir() -> Path:
@@ -81,6 +83,7 @@ def _write_up(date_label: str, sections: dict) -> str:
     from sunny.llm.gateway import chat_completion_sync
 
     data = {k: v.get("data") for k, v in sections.items() if v.get("status") == "ok"}
+    data["unavailable"] = [k for k, v in sections.items() if v.get("status") != "ok"]
     result = chat_completion_sync(
         [
             {"role": "system", "content": BRIEF_PROMPT},
