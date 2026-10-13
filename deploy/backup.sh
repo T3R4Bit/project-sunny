@@ -11,9 +11,13 @@ WORK="/tmp/sunny-backup-$STAMP"   # /tmp inside the container is a tmpfs
 
 mkdir -p "$DEST"
 
+# Archive is streamed out on stdout (docker cp cannot read the container's tmpfs /tmp)
+OUT="$DEST/sunny-$STAMP.tar.gz"
+trap 'rm -f "$OUT.part"' ERR
 docker exec sunny sh -c "
   set -e
   mkdir -p $WORK
+  exec 3>&1 1>&2   # keep stdout clean for the archive
   if [ -d /data/sunny-vault/.git ]; then
     git -C /data/sunny-vault add -A || true
     git -C /data/sunny-vault commit -q -m 'backup: snapshot before nightly bundle' || true
@@ -21,15 +25,14 @@ docker exec sunny sh -c "
   fi
   python -c \"import sqlite3; s=sqlite3.connect('/app/.sunny/sunny.db'); d=sqlite3.connect('$WORK/sunny.db'); s.backup(d); d.close(); s.close()\"
   cp /app/.sunny/llm-spend.json $WORK/ 2>/dev/null || true
-  tar -czf /tmp/sunny-$STAMP.tar.gz -C $WORK .
+  tar -czf - -C $WORK . >&3
   rm -rf $WORK
-"
-docker cp "sunny:/tmp/sunny-$STAMP.tar.gz" "$DEST/sunny-$STAMP.tar.gz"
-docker exec sunny rm -f "/tmp/sunny-$STAMP.tar.gz"
+" > "$OUT.part"
+mv "$OUT.part" "$OUT"
 
 # Retention
 ls -1t "$DEST"/sunny-*.tar.gz | tail -n +"$((KEEP + 1))" | xargs -r rm -f
-echo "backup written: $DEST/sunny-$STAMP.tar.gz"
+echo "backup written: $OUT ($(du -h "$OUT" | cut -f1))"
 
 # Restore:
 #   tar -xzf sunny-<stamp>.tar.gz -C /tmp/restore
