@@ -17,7 +17,8 @@ def _get_rules_content():
 @pytest.fixture
 def client(vault: Path):
     """Test client with vault path pointing to tmp_path."""
-    mock_settings = MagicMock()
+    from sunny.config import Settings
+    mock_settings = Settings(_env_file=None)
     mock_settings.vault_path = vault
     mock_settings.db_path = str(vault / ".sunny" / "sunny.db")
     mock_settings.admin_password_hash = ""
@@ -291,7 +292,8 @@ class TestExtractionIntegration:
 
     def _setup_mock_settings(self, vault: Path):
         """Helper to mock settings for a vault."""
-        mock_settings = MagicMock()
+        from sunny.config import Settings
+        mock_settings = Settings(_env_file=None)
         mock_settings.vault_path = vault
         mock_settings.db_path = str(vault / ".sunny" / "sunny.db")
         mock_settings.admin_password_hash = ""

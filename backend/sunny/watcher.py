@@ -65,7 +65,7 @@ def _run_watcher(vault: Path) -> None:
     Runs until _stop_event is set.
     """
     try:
-        from watchfiles import watch, RunMode
+        from watchfiles import watch
     except ImportError:
         log.warning("watchfiles not installed; vault file watching disabled")
         return
@@ -74,44 +74,37 @@ def _run_watcher(vault: Path) -> None:
 
     while not _stop_event.is_set():
         try:
-            # Use a short timeout so we can check _stop_event
-            changes = watch(
-                vault,
-                watch_count=1,
-                pause=2,
-                watch_filter=None,
-                stop_event=_stop_event,
-                raise_on_error=False,
-                recurse=True,
-            )
-            if not changes:
-                continue
-
-            for change_type, changed_path in changes:
-                p = Path(changed_path)
-
-                # Skip .tmp files (atomic writes)
-                if p.suffix == ".tmp" or ".sunny_tmp" in p.name:
-                    continue
-
-                # Skip git internal files
-                if ".git" in changed_path:
-                    continue
-
-                # Detect sync conflicts
-                if ".sync-conflict" in p.name:
-                    record_sync_conflict(str(p.relative_to(vault)))
-                    continue
-
-                # Track external edits
-                _mark_external_edit(p)
-
-                log.debug("Vault change detected: %s", p)
-
+            # watch() yields batches of changes until stop_event is set
+            for changes in watch(vault, watch_filter=None, stop_event=_stop_event, raise_interrupt=False):
+                _handle_changes(vault, changes)
         except Exception:
             log.exception("Error in vault watcher")
             # Give it a moment before retrying
             time.sleep(1)
+
+
+def _handle_changes(vault: Path, changes: set) -> None:
+    """Classify one batch of watchfiles changes."""
+    for change_type, changed_path in changes:
+        p = Path(changed_path)
+
+        # Skip .tmp files (atomic writes)
+        if p.suffix == ".tmp" or ".sunny_tmp" in p.name:
+            continue
+
+        # Skip git internal files
+        if ".git" in changed_path:
+            continue
+
+        # Detect sync conflicts
+        if ".sync-conflict" in p.name:
+            record_sync_conflict(str(p.relative_to(vault)))
+            continue
+
+        # Track external edits
+        _mark_external_edit(p)
+
+        log.debug("Vault change detected: %s", p)
 
 
 def start_watcher(vault_path: Path) -> Optional[object]:

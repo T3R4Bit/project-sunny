@@ -1,5 +1,3 @@
-import { useAuth } from '../hooks/useAuth';
-
 export default function Header({
   currentPage,
   onNavigate,
@@ -9,8 +7,6 @@ export default function Header({
   onNavigate: (page: string) => void;
   onLogout: () => void;
 }) {
-  useAuth(); // for auth state
-
   return (
     <header className="header">
       <h1>Sunny</h1>

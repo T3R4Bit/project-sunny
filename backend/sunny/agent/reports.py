@@ -150,6 +150,9 @@ class ReportGenerator:
                 f"Total facts recorded: {len(fact_files)}.",
             )
 
+        if not report.sections:
+            report.add_section("Activity", "No extraction activity or facts recorded yet.")
+
         return report
 
     def generate_weekly_report(self, week_start: Optional[str] = None) -> Report:

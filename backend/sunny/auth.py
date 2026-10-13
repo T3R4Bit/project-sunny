@@ -1,19 +1,40 @@
-"""Auth — login hardening: password hash, rate limit, SameSite cookie, Origin check."""
+"""Auth — login hardening: password hash, rate limit, SameSite cookie, Origin check.
+
+Password hashes are ``pbkdf2_sha256:<iterations>:<salt hex>:<hash hex>`` (generate one with
+``python -m sunny.auth``). A bare 64-char SHA-256 hex digest is still accepted for older .env files.
+
+Session cookies are stateless HMAC-signed tokens (``<expires>.<nonce>.<sig>``) so they survive
+restarts. The signing key comes from ``SESSION_SECRET`` or, failing that, a random key persisted
+in ``<secret_dir>/session_secret``.
+"""
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import secrets
 import time
+from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from sunny import config
+
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["auth"])
+
+COOKIE_NAME = "session"
+PBKDF2_ITERATIONS = 600_000
+
+# Paths reachable without a session: auth itself, health, and the static PWA shell.
+PUBLIC_PATHS = {"/login", "/logout", "/auth/status", "/health", "/", "/index.html",
+                "/manifest.json", "/sw.js", "/favicon.ico"}
+PUBLIC_PREFIXES = ("/assets/", "/icon-")
 
 # --- In-memory rate limiter ---
 
@@ -46,52 +67,97 @@ def _record_attempt(ip: str, success: bool) -> None:
         _login_attempts[ip] = []  # reset on success
 
 
-# --- Session store ---
+# --- Password hashing ---
 
-_sessions: dict[str, dict] = {}  # token -> {created, expires}
-_SESSION_MAX_AGE = 720 * 3600  # 30 days in seconds
+
+def hash_password(password: str, iterations: int = PBKDF2_ITERATIONS) -> str:
+    """Return a salted PBKDF2-SHA256 hash string for ADMIN_PASSWORD_HASH."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
+    return f"pbkdf2_sha256:{iterations}:{salt.hex()}:{digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Check a password against a stored hash (PBKDF2 format or legacy bare SHA-256 hex)."""
+    if stored.startswith("pbkdf2_sha256:"):
+        try:
+            _, iterations, salt_hex, hash_hex = stored.split(":")
+            digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), int(iterations))
+        except ValueError:
+            log.error("ADMIN_PASSWORD_HASH is malformed")
+            return False
+        return hmac.compare_digest(digest.hex(), hash_hex)
+    computed = hashlib.sha256(password.encode()).hexdigest()
+    return hmac.compare_digest(computed, stored.lower())
+
+
+# --- Session tokens ---
+
+_revoked: set[str] = set()
+_cached_secret: Optional[bytes] = None
+
+
+def _session_secret() -> bytes:
+    """Signing key: SESSION_SECRET env, else a random key persisted in the secrets dir."""
+    global _cached_secret
+    settings = config.get_settings()
+    if settings.session_secret:
+        return settings.session_secret.encode()
+    if _cached_secret is not None:
+        return _cached_secret
+    path = Path(settings.secret_dir) / "session_secret"
+    try:
+        if path.exists():
+            _cached_secret = path.read_text().strip().encode()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            value = secrets.token_urlsafe(48)
+            path.write_text(value)
+            path.chmod(0o600)
+            _cached_secret = value.encode()
+    except OSError as e:
+        log.warning("Cannot persist session secret (%s); sessions will reset on restart", e)
+        _cached_secret = secrets.token_urlsafe(48).encode()
+    return _cached_secret
+
+
+def _sign(payload: str) -> str:
+    return hmac.new(_session_secret(), payload.encode(), hashlib.sha256).hexdigest()
 
 
 def _create_session(max_age_hours: int = 720) -> str:
-    """Create a new session, return token."""
-    token = secrets.token_urlsafe(48)
+    """Create a new signed session token."""
     expires = int(time.time()) + max_age_hours * 3600
-    _sessions[token] = {"created": int(time.time()), "expires": expires}
-    return token
+    payload = f"{expires}.{secrets.token_urlsafe(16)}"
+    return f"{payload}.{_sign(payload)}"
 
 
 def _get_session(request: Request) -> Optional[str]:
     """Extract session token from cookie."""
-    cookies = request.cookies.get("session", "")
-    if cookies.startswith("session="):
-        return cookies[8:].split(";")[0]
-    return None
+    return request.cookies.get(COOKIE_NAME) or None
 
 
-def _validate_session(token: Optional[str], max_age_hours: int = 720) -> bool:
-    """Check if session token is valid and not expired."""
-    if not token:
+def _validate_session(token: Optional[str]) -> bool:
+    """Check that a session token is correctly signed, unexpired and not revoked."""
+    if not token or token in _revoked:
         return False
-    session = _sessions.get(token)
-    if not session:
+    try:
+        expires, nonce, sig = token.split(".")
+        expired = time.time() > int(expires)
+    except ValueError:
         return False
-    if time.time() > session["expires"]:
-        del _sessions[token]
+    if expired:
         return False
-    return True
+    return hmac.compare_digest(sig, _sign(f"{expires}.{nonce}"))
 
 
-def _clean_expired_sessions() -> None:
-    """Remove expired sessions."""
-    now = time.time()
-    expired = [t for t, s in _sessions.items() if now > s["expires"]]
-    for t in expired:
-        del _sessions[t]
+def _cookie_max_age() -> int:
+    return config.get_settings().session_max_age_hours * 3600
 
 
 @router.post("/login")
 async def login(request: Request) -> JSONResponse:
-    """Authenticate with password hash. Returns session cookie on success."""
+    """Authenticate with the admin password. Returns session cookie on success."""
     ip = _get_client_ip(request)
 
     # Rate limit check
@@ -100,27 +166,22 @@ async def login(request: Request) -> JSONResponse:
         log.warning("Rate limited login from %s: %s", ip, lockout)
         raise HTTPException(status_code=429, detail=lockout)
 
-    body = await request.json()
-    password = body.get("password", "")
-    password_hash = body.get("password_hash", "")
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    password = body.get("password", "") if isinstance(body, dict) else ""
 
-    if not password and not password_hash:
+    if not password:
         _record_attempt(ip, False)
-        raise HTTPException(status_code=400, detail="password or password_hash required")
+        raise HTTPException(status_code=400, detail="password required")
 
-    # Verify password or pre-hashed password
     admin_hash = _get_admin_hash()
-    if password:
-        if not admin_hash:
-            # Auth not configured — accept any non-empty password during P0
-            valid = len(password) > 0
-        else:
-            computed = hashlib.sha256(password.encode()).hexdigest()
-            valid = computed == admin_hash
-    elif password_hash:
-        valid = password_hash == admin_hash
+    if not admin_hash:
+        # Auth not configured (dev only) — accept any non-empty password
+        valid = True
     else:
-        valid = False
+        valid = verify_password(password, admin_hash)
 
     if not valid:
         _record_attempt(ip, False)
@@ -129,16 +190,13 @@ async def login(request: Request) -> JSONResponse:
 
     _record_attempt(ip, True)
 
-    # Create session
-    token = _create_session()
-
     resp = JSONResponse(content={"status": "ok"})
     resp.set_cookie(
-        "session",
-        value=token,
+        COOKIE_NAME,
+        value=_create_session(config.get_settings().session_max_age_hours),
         httponly=True,
         samesite="strict",
-        max_age=720 * 3600,
+        max_age=_cookie_max_age(),
         secure=True,
         path="/",
     )
@@ -150,29 +208,21 @@ async def logout(request: Request) -> JSONResponse:
     """Invalidate the current session."""
     token = _get_session(request)
     if token:
-        _sessions.pop(token, None)
+        _revoked.add(token)
     resp = JSONResponse(content={"status": "ok"})
-    resp.set_cookie("session", "", httponly=True, samesite="strict", max_age=0, secure=True, path="/")
+    resp.set_cookie(COOKIE_NAME, "", httponly=True, samesite="strict", max_age=0, secure=True, path="/")
     return resp
 
 
 @router.get("/auth/status")
 async def auth_status(request: Request) -> dict:
     """Check if currently authenticated."""
-    token = _get_session(request)
-    if _validate_session(token):
-        return {"authenticated": True}
-    return {"authenticated": False}
+    return {"authenticated": _validate_session(_get_session(request))}
 
 
 def _get_admin_hash() -> str:
-    """Get the admin password hash from environment or settings."""
-    from sunny.config import get_settings
-    settings = get_settings()
-    if settings.admin_password_hash:
-        return settings.admin_password_hash
-    # Fallback: accept empty password during P0 scaffolding
-    return ""
+    """Get the admin password hash from settings ("" means auth is not configured)."""
+    return config.get_settings().admin_password_hash
 
 
 def _get_client_ip(request: Request) -> str:
@@ -186,44 +236,57 @@ def _get_client_ip(request: Request) -> str:
 
 
 def verify_session(request: Request) -> bool:
-    """Middleware helper: check if request has valid session.
-
-    Used by Origin-check middleware on state-changing routes.
-    Returns True if authenticated or if auth is not yet configured (P0).
-    """
-    settings = get_settings()
-    if not settings.admin_password_hash:
-        return True  # auth not configured during P0
-    token = _get_session(request)
-    max_age = settings.session_max_age_hours
-    if _validate_session(token, max_age):
+    """True if the request carries a valid session, or auth is not configured (dev)."""
+    if not _get_admin_hash():
         return True
-    return False
+    return _validate_session(_get_session(request))
 
 
-def origin_check_middleware(app) -> None:
-    """Add Origin check middleware for WebSocket and state-changing routes.
+def _is_public(path: str) -> bool:
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 
-    Blocks requests where Origin doesn't match expected host.
-    """
-    from fastapi.middleware.base import BaseHTTPMiddleware
 
-    class OriginMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            path = request.url.path
-            # Only check these paths
-            if not (path.startswith("/ws/") or path in ("/login", "/logout", "/projects", "/sessions")):
-                return await call_next(request)
+def _origin_ok(request: Request) -> bool:
+    """Reject cross-origin state-changing requests (Origin host must match Host)."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    host = request.headers.get("host", "").split(":")[0]
+    return urlparse(origin).hostname == host
 
-            origin = request.headers.get("origin", "")
-            if origin:
-                # Accept same-origin requests
-                host = request.url.hostname or ""
-                if host and origin.endswith(host):
-                    return await call_next(request)
-                # Allow if no host info
-                return await call_next(request)
 
-            return await call_next(request)
+def install_auth_middleware(app) -> None:
+    """Require a valid session for every non-public path, plus an Origin check on writes."""
 
-    app.add_middleware(OriginMiddleware)
+    @app.middleware("http")
+    async def require_session(request: Request, call_next):
+        path = request.url.path
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not _origin_ok(request):
+            return JSONResponse(status_code=403, content={"detail": "cross-origin request rejected"})
+        if not _is_public(path) and not verify_session(request):
+            return JSONResponse(status_code=401, content={"detail": "not authenticated"})
+        response = await call_next(request)
+        _maybe_renew(request, response)
+        return response
+
+
+def _maybe_renew(request: Request, response) -> None:
+    """Sliding sessions: reissue the cookie once less than half its lifetime remains,
+    so a device in regular use (e.g. the desk kiosk) never gets logged out."""
+    token = _get_session(request)
+    if not _validate_session(token):
+        return
+    max_age = _cookie_max_age()
+    if int(token.split(".")[0]) - time.time() > max_age / 2:
+        return
+    response.set_cookie(COOKIE_NAME, value=_create_session(max_age // 3600), httponly=True,
+                        samesite="strict", max_age=max_age, secure=True, path="/")
+
+
+if __name__ == "__main__":
+    import getpass
+
+    pw = getpass.getpass("New Sunny password: ")
+    if pw != getpass.getpass("Repeat: "):
+        raise SystemExit("Passwords do not match")
+    print(f"ADMIN_PASSWORD_HASH={hash_password(pw)}")

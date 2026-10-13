@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from sunny.config import get_settings, Settings
 from sunny.db import init_db
-from sunny.auth import router as auth_router
+from sunny.admin import router as admin_router
+from sunny.auth import install_auth_middleware, router as auth_router
 from sunny.projects.router import router as projects_router
 from sunny.watcher import start_watcher, stop_watcher
 from sunny.index.router import router as index_router
@@ -76,6 +78,9 @@ def create_app() -> FastAPI:
         log.info("%s %s -> %d", method, path, response.status_code)
         return response
 
+    # Every non-public route needs a session
+    install_auth_middleware(app)
+
     # Health endpoint
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -114,7 +119,37 @@ def create_app() -> FastAPI:
     # Include agent tools routes
     app.include_router(agent_router)
 
+    # Include admin status
+    app.include_router(admin_router)
+
+    mount_frontend(app, get_settings().frontend_dir)
+
     return app
+
+
+def mount_frontend(app: FastAPI, dist: Path) -> None:
+    """Serve the built PWA: index.html at /, hashed bundles under /assets, root files by name."""
+    index = dist / "index.html"
+    if not index.is_file():
+        log.info("No frontend build at %s; serving API only", dist)
+        return
+
+    if (dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    async def spa_index() -> FileResponse:
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+    for f in dist.iterdir():
+        if f.is_file() and f.name != "index.html":
+            app.add_api_route(f"/{f.name}", _static_file(f), include_in_schema=False)
+
+
+def _static_file(path: Path):
+    async def serve() -> FileResponse:
+        return FileResponse(path, headers={"Cache-Control": "no-cache"} if path.name == "sw.js" else None)
+    return serve
 
 
 # --- Lifespan ---
@@ -139,18 +174,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     log.info("Startup complete")
 
-    # Start the vault file watcher
-    settings = get_settings()
-    watcher_task = await start_watcher(settings.vault_path)
+    # Start the vault file watcher (runs in its own thread)
+    start_watcher(settings.vault_path)
 
     # Start the index watcher
     await start_index_watcher()
 
     # Start the agent loop
     from sunny.agent.loop import start_agent_loop, stop_agent_loop, AgentState
-    settings = get_settings()
-    agent_state = AgentState.AWAKE if not settings.sleep_state else AgentState.SLEEPING
-    await start_agent_loop(agent_state)
+    await start_agent_loop(AgentState.AWAKE)
 
     yield
 
@@ -192,13 +224,11 @@ def setup_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     ))
 
+    # One handler on the root logger; "sunny.*" loggers propagate to it
     root = logging.getLogger()
     root.setLevel(level)
-    root.addHandler(handler)
+    if not any(getattr(h, "_sunny", False) for h in root.handlers):
+        handler._sunny = True
+        root.addHandler(handler)
 
-    sunny = logging.getLogger("sunny")
-    sunny.setLevel(level)
-
-    # Avoid duplicate handlers on re-init
-    if not sunny.handlers:
-        sunny.addHandler(handler)
+    logging.getLogger("sunny").setLevel(level)

@@ -22,10 +22,12 @@ def client(vault: Path):
     import importlib
 
     # Create mock settings
-    mock_settings = MagicMock()
+    from sunny.config import Settings
+    mock_settings = Settings(_env_file=None)
     mock_settings.vault_path = vault
     mock_settings.db_path = str(vault / ".sunny" / "sunny.db")
     mock_settings.admin_password_hash = ""
+    mock_settings.secret_dir = vault / ".sunny" / "secrets"
 
     # Patch in sunny.config first (so new imports pick it up)
     import sunny.config as config_mod
@@ -205,9 +207,9 @@ def test_project_session_chat(client):
         f"/chats/sessions/{slug}/chat",
         json={"message": "Hello from project", "project_slug": "full-chat-test"}
     )
-    # Returns 500 when no fake gateway is configured
-    # In production with fake gateway configured, this would return 200
-    assert resp.status_code in (200, 500)
+    # Returns 502 when no Claude key is configured
+    # In production with a key configured, this would return 200
+    assert resp.status_code in (200, 502)
 
 
 def test_search(client):
@@ -282,3 +284,47 @@ def test_session_move(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["project_slug"] == "to-project"
+
+
+def test_chat_records_turns_and_sends_history(client, monkeypatch):
+    """Chat appends both turns to the session file and feeds earlier turns back to Claude."""
+    import sunny.llm.router as chat_router
+
+    seen: list[list[dict]] = []
+
+    async def fake_completion(messages, **kwargs):
+        seen.append(messages)
+        return {"content": f"reply {len(seen)}", "prompt_tokens": 1, "completion_tokens": 1}
+
+    monkeypatch.setattr(chat_router, "chat_completion", fake_completion)
+
+    slug = client.post("/chats/sessions", json={"title": "History test"}).json()["slug"]
+    assert client.post(f"/chats/sessions/{slug}/chat", json={"message": "first"}).json()["reply"] == "reply 1"
+    assert client.post(f"/chats/sessions/{slug}/chat", json={"message": "second"}).json()["reply"] == "reply 2"
+
+    turns = client.get(f"/chats/sessions/{slug}").json()["turns"]
+    assert [(t["role"], t["content"]) for t in turns] == [
+        ("Keaton", "first"), ("Sunny", "reply 1"), ("Keaton", "second"), ("Sunny", "reply 2"),
+    ]
+    second_prompt = "\n".join(str(m["content"]) for m in seen[1])
+    assert "first" in second_prompt and "reply 1" in second_prompt
+
+
+def test_chat_stream_sse(client, monkeypatch):
+    """The stream endpoint emits {"text"} events then [DONE], and saves the full reply."""
+    import json
+    import sunny.llm.router as chat_router
+
+    async def fake_stream(messages, **kwargs):
+        for part in ("Hel", "lo"):
+            yield part
+
+    monkeypatch.setattr(chat_router, "streaming_chat", fake_stream)
+
+    slug = client.post("/chats/sessions", json={"title": "Stream test"}).json()["slug"]
+    resp = client.post(f"/chats/sessions/{slug}/stream", json={"message": "hi"})
+    events = [e[6:] for e in resp.text.split("\n\n") if e.startswith("data: ")]
+    assert events[-1] == "[DONE]"
+    assert "".join(json.loads(e)["text"] for e in events[:-1]) == "Hello"
+    turns = client.get(f"/chats/sessions/{slug}").json()["turns"]
+    assert turns[-1] == {"role": "Sunny", "content": "Hello"}

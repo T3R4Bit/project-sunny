@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,19 +18,20 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     # --- paths ---
-    vault_path: Path = Path("/data/sunny-vault")
-    db_path: Path = Path(".sunny/sunny.db")
-    secret_dir: Path = Path(".sunny/secrets")
+    vault_path: Path = Field(Path("/data/sunny-vault"), validation_alias=AliasChoices("SUNNY_VAULT_PATH", "VAULT_PATH"))
+    db_path: Path = Field(Path(".sunny/sunny.db"), validation_alias=AliasChoices("SUNNY_DB_PATH", "DB_PATH"))
+    secret_dir: Path = Field(Path(".sunny/secrets"), validation_alias=AliasChoices("SUNNY_SECRET_DIR", "SECRET_DIR"))
 
     # --- Claude ---
     claude_api_key: str = ""
     claude_base_url: str = "https://api.anthropic.com/v1"
-    model_fast: str = "claude-haiku-4-5-20251001"
-    model_default: str = "claude-sonnet-5-5"
-    model_deep: str = "claude-opus-5-5"
+    model_fast: str = Field("claude-haiku-4-5-20251001", validation_alias=AliasChoices("SUNNY_MODEL_FAST", "MODEL_FAST"))
+    model_default: str = Field("claude-sonnet-5-5", validation_alias=AliasChoices("SUNNY_MODEL_DEFAULT", "MODEL_DEFAULT"))
+    model_deep: str = Field("claude-opus-5-5", validation_alias=AliasChoices("SUNNY_MODEL_DEEP", "MODEL_DEEP"))
 
     # --- LLM gateway ---
     llm_spend_daily: float = 10.0
@@ -66,6 +67,9 @@ class Settings(BaseSettings):
     listen_host: str = "0.0.0.0"
     listen_port: int = 8080
     log_level: str = "INFO"
+    session_secret: str = ""  # HMAC key for session cookies; generated into secret_dir if empty
+    frontend_dir: Path = Field(Path("/app/frontend/dist"),
+                               validation_alias=AliasChoices("SUNNY_FRONTEND_DIR", "FRONTEND_DIR"))
 
     ttl_seconds: int = 5
 
@@ -117,6 +121,11 @@ def get_settings() -> Settings:
         _settings_mtime = env_file.stat().st_mtime
 
     return _settings
+
+
+def vault_root() -> Path:
+    """The configured vault directory (never a CWD-relative "vault")."""
+    return Path(get_settings().vault_path)
 
 
 def reload_if_changed() -> Settings:

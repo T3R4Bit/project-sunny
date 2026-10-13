@@ -21,12 +21,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from sunny.llm.gateway import MODEL_DEFAULT, chat_completion, SpendStatus
+from sunny.llm.gateway import chat_completion_sync, SpendStatus
 from sunny.vault.io import read_file, atomic_write
 from sunny.frontmatter import load, dump
 from sunny.index.service import index_text, init_index
 import sunny.config
 from sunny.extraction.rules_engine import RulesEngine, RulesParser, ExtractionLog, write_fact
+from sunny.config import vault_root
 
 log = logging.getLogger(__name__)
 
@@ -194,9 +195,8 @@ Keep it factual. No fluff."""
     ]
 
     try:
-        result = chat_completion(
+        result = chat_completion_sync(
             messages=messages,
-            model=MODEL_DEFAULT,
             json_schema=CLOSE_HOOK_SCHEMA,
             purpose="session_summary",
         )
@@ -223,9 +223,9 @@ def _update_session_frontmatter(
 ) -> None:
     """Write summary fields into the session file's frontmatter."""
     if project_slug:
-        path = Path("vault") / "projects" / project_slug / "sessions" / f"{session_slug}.md"
+        path = vault_root() / "projects" / project_slug / "sessions" / f"{session_slug}.md"
     else:
-        path = Path("vault") / "chats" / f"{session_slug}.md"
+        path = vault_root() / "chats" / f"{session_slug}.md"
 
     if not path.exists():
         log.warning("Session file not found for frontmatter update: %s", path)
@@ -251,7 +251,7 @@ def _update_session_frontmatter(
 
 def _merge_to_project_context(project_slug: str, result: CloseHookResult) -> None:
     """Merge session items into project's context.md."""
-    context_path = Path("vault") / "projects" / project_slug / "context.md"
+    context_path = vault_root() / "projects" / project_slug / "context.md"
     if not context_path.exists():
         return
 
@@ -341,7 +341,7 @@ def _add_recent_session(body: str, project_slug: str, summary: str) -> str:
 
 def _merge_to_personal_context(result: CloseHookResult) -> None:
     """Merge personal facts into memory/personal-context.md."""
-    path = Path("vault") / "memory" / "personal-context.md"
+    path = vault_root() / "memory" / "personal-context.md"
     if not path.exists():
         return
 
@@ -439,7 +439,7 @@ def _git_commit(project_slug: Optional[str], session_slug: str, result: CloseHoo
     """Git commit the vault changes."""
     try:
         import subprocess
-        vault_path = Path("vault")
+        vault_path = vault_root()
 
         # Stage changed files
         subprocess.run(

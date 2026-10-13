@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from sunny.llm.gateway import MODEL_DEFAULT, MODEL_FAST
+from sunny.config import vault_root
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ def assemble_prompt(
 def _load_system_prompt(purpose: str) -> str:
     """Load the system prompt for the given purpose."""
     # Try loading from docs/instructions/<purpose>.md
-    prompt_path = Path("vault") / "docs" / "instructions" / f"{purpose}.md"
+    prompt_path = vault_root() / "docs" / "instructions" / f"{purpose}.md"
     if prompt_path.exists():
         try:
             content = prompt_path.read_text(encoding="utf-8")
@@ -135,7 +136,7 @@ Guidelines:
 
 def _load_file(relative_path: str) -> Optional[str]:
     """Load a file from the vault, returning None if missing."""
-    path = Path("vault") / relative_path
+    path = vault_root() / relative_path
     try:
         if path.exists():
             return path.read_text(encoding="utf-8").strip()

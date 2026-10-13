@@ -18,6 +18,7 @@ from sunny.index.chunker import Chunk, chunk_text
 from sunny.index.fts import (
     Hit,
     add_chunk as _fts_add,
+    chunk_rowid,
     init_fts,
     remove_chunk,
     search_fts as _search_fts,
@@ -85,7 +86,7 @@ def index_text(
             chunk.tags = tags
         conn.execute("BEGIN")
         _fts_add(conn, chunk)
-        chunk_ids.append(id(chunk))
+        chunk_ids.append(chunk_rowid(chunk))
         conn.commit()
     return chunk_ids
 

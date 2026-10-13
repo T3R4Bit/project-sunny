@@ -1,23 +1,21 @@
 import { useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import { api } from '../utils/api';
 
-export default function LoginPage({ onNavigate }: { onNavigate: (page: string) => void }) {
-  const { login } = useAuth();
-  const [username, setUsername] = useState('');
+export default function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!username.trim() || !password.trim()) return;
+    if (!password.trim()) return;
     setLoading(true);
     setError('');
     try {
-      await login(username, password);
-      onNavigate('home');
-    } catch {
-      setError('Invalid credentials');
+      await api.login(password);
+      onLogin();
+    } catch (err) {
+      setError(err instanceof Error && err.message.startsWith('429') ? 'Too many attempts. Wait a few minutes.' : 'Wrong password');
     } finally {
       setLoading(false);
     }
@@ -28,15 +26,7 @@ export default function LoginPage({ onNavigate }: { onNavigate: (page: string) =
       <div className="card" style={{ width: '100%', maxWidth: '360px' }}>
         <h2 style={{ textAlign: 'center', marginBottom: '24px' }}>Sunny Login</h2>
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '16px' }}>
-            <input
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              placeholder="Username"
-              autoComplete="username"
-              autoFocus
-            />
-          </div>
+          <input type="text" name="username" value="keaton" autoComplete="username" readOnly hidden />
           <div style={{ marginBottom: '16px' }}>
             <input
               type="password"
@@ -44,6 +34,7 @@ export default function LoginPage({ onNavigate }: { onNavigate: (page: string) =
               onChange={e => setPassword(e.target.value)}
               placeholder="Password"
               autoComplete="current-password"
+              autoFocus
             />
           </div>
           {error && (

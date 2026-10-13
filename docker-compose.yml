@@ -1,30 +1,47 @@
+# Sunny V2 on the M-700. Everything is reachable only from localhost or the tailnet:
+#   - Sunny (8080) and Nextcloud (8082) bind to 127.0.0.1 and are published over HTTPS
+#     with `tailscale serve` (see deploy/README.md).
+#   - Syncthing's sync port binds to the Tailscale IP; its GUI binds to 127.0.0.1.
+# Values come from .env next to this file (copy .env.example).
+#
+# Nextcloud (calendar) is opt-in: `docker compose --profile calendar up -d`. Sunny's CalDAV code
+# is not wired to any route or agent task yet, so it is off by default to save ~1.2 GB of RAM.
+
+name: sunny
+
 services:
   sunny:
     build:
       context: .
       dockerfile: Dockerfile
+    image: sunny:latest
     container_name: sunny
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - SUNNY_VAULT_PATH=/data/sunny-vault
+      - SUNNY_DB_PATH=/app/.sunny/sunny.db
+      - SUNNY_SECRET_DIR=/app/.sunny/secrets
+      - GIT_AUTHOR_NAME=Sunny
+      - GIT_AUTHOR_EMAIL=sunny@localhost
+      - GIT_COMMITTER_NAME=Sunny
+      - GIT_COMMITTER_EMAIL=sunny@localhost
+      - HOME=/tmp
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
-      - sunny-data:/data/sunny-vault
-      - sunny-secrets:/app/.sunny/secrets:ro
+      - sunny-vault:/data/sunny-vault
+      - sunny-state:/app/.sunny
     tmpfs:
-      - /tmp:noexec,nosuid,size=64M
-      - /app/.sunny:noexec,nosuid,size=16M
+      - /tmp:nosuid,size=256M
     read_only: true
-    user: dev
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
-    environment:
-      - SUNNY_VAULT_PATH=/data/sunny-vault
+    mem_limit: 2g
     depends_on:
-      syncthing:
-        condition: service_started
-      nextcloud:
-        condition: service_started
+      - syncthing
     labels:
       sunny.service: "true"
       sunny.team: "pc"
@@ -35,14 +52,20 @@ services:
   syncthing:
     image: syncthing/syncthing:latest
     container_name: syncthing
-    ports:
-      - "8384:8384"
-      - "22000:22000/tcp"
-      - "22000:22000/udp"
-    volumes:
-      - syncthing-data:/var/syncthing
+    restart: unless-stopped
+    hostname: sunny-m700
     environment:
-      - PCS_ADDR=off
+      - PUID=1000
+      - PGID=1000
+      - STGUIADDRESS=0.0.0.0:8384
+    ports:
+      - "127.0.0.1:8384:8384"
+      - "${TAILSCALE_IP:?set TAILSCALE_IP in .env}:22000:22000/tcp"
+      - "${TAILSCALE_IP}:22000:22000/udp"
+    volumes:
+      - syncthing-config:/var/syncthing
+      - sunny-vault:/var/syncthing/sunny-vault
+    mem_limit: 512m
     labels:
       sunny.service: "true"
       sunny.team: "pc"
@@ -51,22 +74,28 @@ services:
       - sunny
 
   nextcloud:
-    image: nextcloud:latest
+    image: nextcloud:stable-apache
+    profiles: ["calendar"]
     container_name: nextcloud
+    restart: unless-stopped
     ports:
-      - "8082:80"
+      - "127.0.0.1:8082:80"
     volumes:
-      - nextcloud-data:/var/www/html
-      - nextcloud-db:/var/www/html/data
+      - nextcloud-html:/var/www/html
     environment:
-      - MYSQL_ROOT_PASSWORD=...
-      - MYSQL_PASSWORD=...
+      - MYSQL_HOST=nextcloud-db
       - MYSQL_DATABASE=nextcloud
       - MYSQL_USER=nextcloud
-      - MYSQL_HOST=/var/run/mysqld/mysqld.sock
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PASSWORD:-}
+      - NEXTCLOUD_ADMIN_USER=${NEXTCLOUD_ADMIN_USER:-admin}
+      - NEXTCLOUD_ADMIN_PASSWORD=${NEXTCLOUD_ADMIN_PASSWORD:-}
+      - NEXTCLOUD_TRUSTED_DOMAINS=${TAILSCALE_HOSTNAME:-localhost} nextcloud localhost
+      - OVERWRITEPROTOCOL=https
+      - TRUSTED_PROXIES=127.0.0.1 172.16.0.0/12
+      - PHP_MEMORY_LIMIT=512M
     depends_on:
-      nextcloud-db:
-        condition: service_started
+      - nextcloud-db
+    mem_limit: 768m
     labels:
       sunny.service: "true"
       sunny.team: "pc"
@@ -76,15 +105,18 @@ services:
 
   nextcloud-db:
     image: mariadb:11
+    profiles: ["calendar"]
     container_name: nextcloud-db
-    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW --innodb-buffer-pool-size=128M
     volumes:
       - nextcloud-db:/var/lib/mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=...
-      - MYSQL_PASSWORD=...
-      - MYSQL_DATABASE=nextcloud
-      - MYSQL_USER=nextcloud
+      - MARIADB_ROOT_PASSWORD=${NEXTCLOUD_DB_ROOT_PASSWORD:-}
+      - MARIADB_DATABASE=nextcloud
+      - MARIADB_USER=nextcloud
+      - MARIADB_PASSWORD=${NEXTCLOUD_DB_PASSWORD}
+    mem_limit: 512m
     labels:
       sunny.service: "true"
       sunny.team: "pc"
@@ -93,10 +125,10 @@ services:
       - sunny
 
 volumes:
-  sunny-data:
-  sunny-secrets:
-  syncthing-data:
-  nextcloud-data:
+  sunny-vault:
+  sunny-state:
+  syncthing-config:
+  nextcloud-html:
   nextcloud-db:
 
 networks:

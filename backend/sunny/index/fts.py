@@ -5,6 +5,7 @@ SQLite FTS5 provides BM25 scoring with no external dependencies.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import sqlite3
@@ -59,6 +60,12 @@ def init_fts(db_path: Path) -> None:
         conn.close()
 
 
+def chunk_rowid(chunk) -> int:
+    """Stable 63-bit row id for a chunk, derived from where it lives and what it says."""
+    key = "|".join((chunk.path, str(chunk.turn_range), chunk.text)).encode()
+    return int.from_bytes(hashlib.sha256(key).digest()[:8], "big") >> 1
+
+
 def add_chunk(conn: sqlite3.Connection, chunk) -> None:
     """Insert or update a chunk in the FTS index.
 
@@ -74,7 +81,7 @@ def add_chunk(conn: sqlite3.Connection, chunk) -> None:
              turn_range_start, turn_range_end, tags, mode)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        id(chunk), chunk.path, chunk.project, chunk.kind,
+        chunk_rowid(chunk), chunk.path, chunk.project, chunk.kind,
         chunk.session_id, chunk.source_id,
         turn_start, turn_end, tags_json, chunk.mode,
     ))
@@ -82,7 +89,7 @@ def add_chunk(conn: sqlite3.Connection, chunk) -> None:
     conn.execute("""
         INSERT OR REPLACE INTO chunks_fts (rowid, text)
         VALUES (?, ?)
-    """, (id(chunk), chunk.text))
+    """, (chunk_rowid(chunk), chunk.text))
 
 
 def remove_chunk(conn: sqlite3.Connection, chunk_id: int) -> None:

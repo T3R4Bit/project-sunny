@@ -15,8 +15,9 @@ export interface Project {
 
 export interface Session {
   slug: string;
+  title: string;
   project_slug: string | null;
   status: string;
-  created_at: string;
-  updated_at: string;
+  started: string;
+  summary?: string;
 }

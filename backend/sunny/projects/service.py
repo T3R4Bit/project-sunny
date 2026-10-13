@@ -219,6 +219,7 @@ def create_session(
 ) -> Session:
     """Create a new session and return it."""
     vault = _init_vault_git()
+    title = title.strip() or "New chat"
     session = Session(
         id=ulid("ses"),
         slug="",
@@ -227,8 +228,12 @@ def create_session(
         kind=kind,
     )
 
-    # Save (this sets slug and filename)
-    session.save(vault)
+    # Filenames are date + title, so keep same-day sessions with the same title apart
+    base_title, n = session.title, 2
+    while session._resolve_path(vault).exists():
+        session.title = f"{base_title} {n}"
+        n += 1
+
     session.slug = Path(session.save(vault)).stem
 
     git_commit(vault, f"session: create '{title}'")

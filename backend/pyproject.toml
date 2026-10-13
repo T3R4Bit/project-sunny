@@ -13,9 +13,25 @@ dependencies = [
     "watchfiles>=1.0",
     "python-frontmatter>=1.1",
     "shortuuid>=1.0",
+    "anthropic>=0.70",
+    "pyyaml>=6.0",
+    "icalendar>=5.0",
+    "caldav>=1.3",
+    "garminconnect>=0.2",
+    "trafilatura>=1.12",
+    "pymupdf>=1.24",
+    "youtube-transcript-api>=0.6",
+    "python-docx>=1.1",
+    "ebooklib>=0.18",
+    "python-pptx>=1.0",
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
+# Semantic search backend (sunny.index.vector) — not wired to an embedding writer yet
+semantic = ["sqlite-vec>=0.1", "fastembed>=0.4"]
+# Voice pipeline (sunny.tools.voice_pipeline) — not exposed through any route yet
+voice = ["faster-whisper>=1.0", "edge-tts>=6.1"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",

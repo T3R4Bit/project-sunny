@@ -25,6 +25,12 @@ Must finish:
 
 ## Current
 
+- 2026-10-12 — Deployed to the M-700 (Docker + `tailscale serve`); see README. Post-lab fixes from the first real
+  boot: app never started (lifespan crash), auth not enforced and cookie never read, Claude gateway never
+  initialised / sent invalid params / mispriced spend, chat had no history or persistence, close hook never awaited,
+  relative `vault/` paths (test pollution), unstable FTS row ids, file watcher API misuse, compose/Dockerfile
+  unusable (no env, DB on tmpfs, no frontend build). 367 tests passing.
+
 - All phases P0-P14 complete. 337/337 tests passing.
 - Recent bug fixes: ideas.py filename collision (line 52-53), garmin_sync.py constructor compat (line 112-115)
 - Next: await deployment instructions or next spec request

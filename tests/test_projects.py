@@ -34,6 +34,7 @@ def client(vault):
         with patch("sunny.config.get_settings") as mock_settings:
             settings = mock_settings.return_value
             settings.vault_path = vault
+            settings.admin_password_hash = ""
             yield TestClient(create_app())
 
 

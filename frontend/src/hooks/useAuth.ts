@@ -16,8 +16,8 @@ export function useAuth() {
     }
   }
 
-  async function login(username: string, password: string) {
-    await api.login(username, password);
+  async function login(password: string) {
+    await api.login(password);
     setAuthenticated(true);
   }
 

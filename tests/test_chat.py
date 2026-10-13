@@ -83,8 +83,9 @@ class TestGateway:
 
     def test_spend_caps_monthly_exceeded(self):
         from sunny.llm.gateway import check_spend_caps, _state, SpendStatus
+        from sunny.config import get_settings
         _state.daily_spend = 0.0
-        _state.monthly_spend = 100.0
+        _state.monthly_spend = get_settings().llm_spend_monthly
         assert check_spend_caps("chat") == SpendStatus.MONTHLY_EXCEEDED
 
     def test_spend_caps_sleep_budget(self):

@@ -11,7 +11,7 @@ import LoginPage from './pages/LoginPage';
 export type Page = 'home' | 'projects' | 'session' | 'search' | 'admin';
 
 export default function App() {
-  const { authenticated, loading, logout } = useAuth();
+  const { authenticated, loading, logout, check } = useAuth();
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [pageProps, setPageProps] = useState<{ sessionId?: string; projectSlug?: string }>({});
 
@@ -36,7 +36,7 @@ export default function App() {
   if (!authenticated) {
     return (
       <div>
-        <LoginPage onNavigate={(page: string) => navigate(page as Page)} />
+        <LoginPage onLogin={() => { check(); navigate('home'); }} />
       </div>
     );
   }

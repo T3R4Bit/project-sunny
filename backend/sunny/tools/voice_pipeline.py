@@ -150,14 +150,15 @@ class VoicePipeline:
     async def _call_llm(self, transcript: str, context: dict) -> str:
         """Call the LLM with the transcript."""
         try:
-            from sunny.llm.close_hook import chat_completion
+            from sunny.config import get_settings
+            from sunny.llm.gateway import chat_completion
 
             messages = [
                 {"role": "system", "content": "You are Sunny, a helpful personal assistant. Keep responses concise."},
                 {"role": "user", "content": transcript},
             ]
 
-            result = await chat_completion(messages, model="claude-sonnet-4-20250514")
+            result = await chat_completion(messages, model=get_settings().model_fast, purpose="voice")
 
             if result and isinstance(result, dict):
                 return result.get("content", result.get("text", "I didn't understand."))

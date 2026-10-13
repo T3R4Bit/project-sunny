@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from sunny.index.service import search as index_search
+from sunny.config import vault_root
 
 log = logging.getLogger(__name__)
 
@@ -150,9 +151,9 @@ class ChatToolRegistry:
         # Try to read the session file directly
         project = args.get("project")
         if project:
-            path = Path("vault") / "projects" / project / "sessions" / f"{session_id}.md"
+            path = vault_root() / "projects" / project / "sessions" / f"{session_id}.md"
         else:
-            path = Path("vault") / "chats" / f"{session_id}.md"
+            path = vault_root() / "chats" / f"{session_id}.md"
 
         if path.exists():
             content = path.read_text(encoding="utf-8")
@@ -164,14 +165,14 @@ class ChatToolRegistry:
         if not project:
             return {"error": "read_context requires a project"}
 
-        path = Path("vault") / "projects" / project / "context.md"
+        path = vault_root() / "projects" / project / "context.md"
         if path.exists():
             content = path.read_text(encoding="utf-8")
             return {"project": project, "content": content}
         return {"error": f"Context not found for project {project}"}
 
     async def _handle_list_projects(self, args: dict) -> dict:
-        projects_path = Path("vault") / "projects"
+        projects_path = vault_root() / "projects"
         projects = []
         if projects_path.exists():
             for d in projects_path.iterdir():

@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional
 
 from sunny.frontmatter import dump, load
 from sunny.vault.io import read_file, atomic_write
+from sunny.config import vault_root
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class ToolRegistry:
 
     def __init__(self, vault: Optional[Path] = None) -> None:
         self._tools: dict[str, Tool] = {}
-        self._vault = vault or Path("vault")
+        self._vault = vault or vault_root()
         self._register_builtins()
         self._load_synthesized_tools()
 

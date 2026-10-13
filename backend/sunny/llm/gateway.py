@@ -15,28 +15,40 @@ import asyncio
 import json
 import logging
 import time
-
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-import httpx
+import anthropic
+
+from sunny import config
 
 log = logging.getLogger(__name__)
 
-# Models (from config, never hardcoded)
-MODEL_FAST = "claude-haiku-4-5-20251001"
+# Fallback model IDs; the live values come from settings (SUNNY_MODEL_*).
+MODEL_FAST = "claude-haiku-5-5"
 MODEL_DEFAULT = "claude-sonnet-5-5"
 MODEL_DEEP = "claude-opus-5-5"
 
-# Default spend caps in USD
-DEFAULT_DAILY_CAP = 10.0
-DEFAULT_MONTHLY_CAP = 100.0
-
 # Sleep sub-budget (fraction of daily cap)
 SLEEP_BUDGET_FRACTION = 0.3
+
+# USD per million tokens (input, output), matched by model-ID prefix.
+PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-fable-": (10.0, 50.0),
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-opus-": (5.0, 25.0),
+    "claude-sonnet-4": (3.0, 15.0),
+    "claude-sonnet-": (2.0, 10.0),
+    "claude-haiku-5": (0.10, 0.50),
+    "claude-haiku-": (1.0, 5.0),
+}
+
+# Server-side refusal fallback (routes a refused request to another model by category).
+_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+_FALLBACK_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5")
 
 
 class SpendStatus(str, Enum):
@@ -82,25 +94,41 @@ class GatewayState:
 
 # Global gateway state
 _state = GatewayState()
-_api_key: str = ""
-_api_base: str = ""
-_client: httpx.AsyncClient | None = None
+_client: anthropic.AsyncAnthropic | None = None
+_sync_client: anthropic.Anthropic | None = None
+_spend_loaded = False
 
 
-def init_gateway(api_key: str, api_base: str = "", daily_cap: float = DEFAULT_DAILY_CAP, monthly_cap: float = DEFAULT_MONTHLY_CAP) -> None:
-    """Initialize the gateway with API credentials."""
-    global _api_key, _api_base, _client
-    _api_key = api_key
-    _api_base = api_base
-    _client = httpx.AsyncClient(
-        base_url=_api_base or "https://api.anthropic.com",
-        timeout=120.0,
-        headers={
-            "x-api-key": _api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-    )
+def init_gateway(api_key: str, api_base: str = "") -> None:
+    """Create the Claude client explicitly (otherwise it is built lazily from settings)."""
+    global _client
+    base_url = api_base.rstrip("/").removesuffix("/v1") or None
+    _client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url, timeout=600.0, max_retries=2)
+
+
+def _get_client() -> anthropic.AsyncAnthropic:
+    if _client is None:
+        settings = config.get_settings()
+        if not settings.claude_api_key:
+            raise RuntimeError("CLAUDE_API_KEY is not set")
+        init_gateway(settings.claude_api_key, settings.claude_base_url)
+    return _client
+
+
+def _get_sync_client() -> anthropic.Anthropic:
+    global _sync_client
+    if _sync_client is None:
+        settings = config.get_settings()
+        if not settings.claude_api_key:
+            raise RuntimeError("CLAUDE_API_KEY is not set")
+        base_url = settings.claude_base_url.rstrip("/").removesuffix("/v1") or None
+        _sync_client = anthropic.Anthropic(api_key=settings.claude_api_key, base_url=base_url,
+                                           timeout=600.0, max_retries=2)
+    return _sync_client
+
+
+def _model(model: str | None) -> str:
+    return model or config.get_settings().model_default
 
 
 def reset_spend_tracking() -> None:
@@ -118,19 +146,22 @@ def check_spend_caps(purpose: str = "chat", is_sleep: bool = False) -> SpendStat
 
     Returns SpendStatus. Sleep-mode jobs use a sub-budget.
     """
+    _load_spend()
     _reset_spend_if_needed()
+    settings = config.get_settings()
+    daily_cap, monthly_cap = settings.llm_spend_daily, settings.llm_spend_monthly
 
     if is_sleep:
-        sleep_cap = DEFAULT_DAILY_CAP * SLEEP_BUDGET_FRACTION
+        sleep_cap = daily_cap * SLEEP_BUDGET_FRACTION
         if _state.sleep_budget_used >= sleep_cap:
             log.warning("Sleep spend cap reached: %.2f / %.2f", _state.sleep_budget_used, sleep_cap)
             return SpendStatus.DAILY_EXCEEDED
     else:
-        if _state.daily_spend >= DEFAULT_DAILY_CAP:
-            log.warning("Daily spend cap reached: %.2f / %.2f", _state.daily_spend, DEFAULT_DAILY_CAP)
+        if _state.daily_spend >= daily_cap:
+            log.warning("Daily spend cap reached: %.2f / %.2f", _state.daily_spend, daily_cap)
             return SpendStatus.DAILY_EXCEEDED
-        if _state.monthly_spend >= DEFAULT_MONTHLY_CAP:
-            log.warning("Monthly spend cap reached: %.2f / %.2f", _state.monthly_spend, DEFAULT_MONTHLY_CAP)
+        if _state.monthly_spend >= monthly_cap:
+            log.warning("Monthly spend cap reached: %.2f / %.2f", _state.monthly_spend, monthly_cap)
             return SpendStatus.MONTHLY_EXCEEDED
 
     return SpendStatus.OK
@@ -147,25 +178,100 @@ def trip_auth_latch() -> None:
 
 
 def _reset_spend_if_needed() -> None:
-    """Reset spend tracking if a new day/month has started."""
+    """Reset daily (and on a new month, monthly) spend when the period rolls over."""
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
     this_month = now.strftime("%Y-%m")
 
-    if _state.last_spend_reset_date and _state.last_spend_reset_date != today:
-        log.info("Daily spend cap reset")
-        reset_spend_tracking()
     if _state.last_spend_reset_month and _state.last_spend_reset_month != this_month:
         log.info("Monthly spend cap reset")
         reset_spend_tracking()
+    elif _state.last_spend_reset_date and _state.last_spend_reset_date != today:
+        log.info("Daily spend cap reset")
+        _state.daily_spend = 0.0
+        _state.sleep_budget_used = 0.0
+        _state.last_spend_reset_date = today
+    elif not _state.last_spend_reset_date:
+        _state.last_spend_reset_date = today
+        _state.last_spend_reset_month = this_month
+
+
+# --- Spend persistence (so restarts don't reset the caps) ---
+
+
+def _spend_file() -> Path:
+    return Path(config.get_settings().db_path).parent / "llm-spend.json"
+
+
+def _load_spend() -> None:
+    global _spend_loaded
+    if _spend_loaded:
+        return
+    _spend_loaded = True
+    try:
+        data = json.loads(_spend_file().read_text())
+    except (OSError, ValueError):
+        return
+    _state.daily_spend = float(data.get("daily_spend", 0.0))
+    _state.monthly_spend = float(data.get("monthly_spend", 0.0))
+    _state.sleep_budget_used = float(data.get("sleep_budget_used", 0.0))
+    _state.last_spend_reset_date = data.get("date", "")
+    _state.last_spend_reset_month = data.get("month", "")
+
+
+def _save_spend() -> None:
+    try:
+        path = _spend_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "daily_spend": _state.daily_spend,
+            "monthly_spend": _state.monthly_spend,
+            "sleep_budget_used": _state.sleep_budget_used,
+            "date": _state.last_spend_reset_date,
+            "month": _state.last_spend_reset_month,
+        }))
+    except OSError:
+        log.warning("Failed to persist LLM spend")
+
+
+# --- Request building ---
+
+
+def _split_system(messages: list[dict]) -> tuple[str, list[dict]]:
+    """Move leading system messages into the top-level system prompt (the API takes it there)."""
+    system_parts: list[str] = []
+    rest: list[dict] = []
+    for m in messages:
+        if m.get("role") == "system" and not rest:
+            system_parts.append(str(m.get("content", "")))
+        else:
+            rest.append(m)
+    return "\n\n".join(p for p in system_parts if p), rest
+
+
+def _request_kwargs(messages: list[dict], model: str, max_tokens: int) -> dict[str, Any]:
+    system, msgs = _split_system(messages)
+    kwargs: dict[str, Any] = {"model": model, "max_tokens": max_tokens, "messages": msgs}
+    if system:
+        kwargs["system"] = system
+    if model in _FALLBACK_MODELS:
+        kwargs["extra_headers"] = {"anthropic-beta": _FALLBACK_BETA}
+        kwargs["extra_body"] = {"fallbacks": "default"}
+    return kwargs
+
+
+def _semaphore(is_sleep: bool) -> asyncio.Semaphore:
+    if _state.semaphore is None:
+        _state.semaphore = asyncio.Semaphore(config.get_settings().llm_max_concurrent if is_sleep else 1)
+    return _state.semaphore
 
 
 async def chat_completion(
     messages: list[dict],
-    model: str = MODEL_DEFAULT,
+    model: str | None = None,
     *,
-    max_tokens: int = 4096,
-    temperature: float = 0.7,
+    max_tokens: int = 16000,
+    temperature: float | None = None,  # ignored: current models reject sampling params
     json_schema: dict | None = None,
     purpose: str = "chat",
     is_sleep: bool = False,
@@ -173,10 +279,9 @@ async def chat_completion(
     """Send a chat completion request.
 
     Args:
-        messages: List of {role, content} dicts.
-        model: Model name.
+        messages: List of {role, content} dicts; leading "system" entries become the system prompt.
+        model: Model ID (defaults to SUNNY_MODEL_DEFAULT).
         max_tokens: Maximum completion tokens.
-        temperature: Sampling temperature.
         json_schema: Optional JSON schema for structured output.
         purpose: Log purpose (chat, summary, extraction, etc.).
         is_sleep: Whether this is a sleep-mode call (uses sub-budget).
@@ -184,138 +289,119 @@ async def chat_completion(
     Returns:
         dict with 'content' (the reply text or parsed JSON if json_schema provided).
     """
-    # Check auth latch
     if _state.auth_latch:
         log.error("Auth latch tripped — refusing call to %s", purpose)
         raise RuntimeError("Auth latch tripped — cannot call LLM")
 
-    # Check spend caps
     status = check_spend_caps(purpose, is_sleep)
     if status != SpendStatus.OK:
         log.warning("Spend cap blocking call to %s: %s", purpose, status.value)
         return {"content": "", "spend_blocked": True}
 
-    # Acquire semaphore
-    if _state.semaphore is None:
-        _state.semaphore = asyncio.Semaphore(2 if is_sleep else 1)
+    model = _model(model)
+    kwargs = _request_kwargs(messages, model, max_tokens)
+    if json_schema:
+        kwargs["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
 
     start_time = time.monotonic()
     try:
-        async with _state.semaphore:
-            result = await _do_call(messages, model, max_tokens, temperature, json_schema)
-            elapsed = (time.monotonic() - start_time) * 1000
-            _record_usage(purpose, model, result, elapsed)
-            return result
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 401:
-            trip_auth_latch()
-            _state.auth_error_count += 1
-            log.error("AuthenticationError [%s] — latch tripped", e.response.status_code)
-            raise
-        log.error("HTTPError [%s] from LLM API", e.response.status_code)
+        async with _semaphore(is_sleep):
+            response = await _get_client().messages.create(**kwargs)
+    except anthropic.AuthenticationError:
+        trip_auth_latch()
+        _state.auth_error_count += 1
+        log.error("AuthenticationError — latch tripped")
+        raise
+    except anthropic.APIStatusError as e:
+        log.error("HTTPError [%s] from LLM API", e.status_code)
         raise
     except Exception as e:
         # Never log connection error messages (may contain keys)
         log.error("LLM call failed for %s: %s", purpose, type(e).__name__)
         raise
-    finally:
-        pass  # semaphore released by context manager
+
+    return _finish(response, model, purpose, json_schema, start_time, is_sleep)
 
 
-async def _do_call(
+def chat_completion_sync(
     messages: list[dict],
-    model: str,
-    max_tokens: int,
-    temperature: float,
-    json_schema: dict | None,
+    model: str | None = None,
+    *,
+    max_tokens: int = 16000,
+    json_schema: dict | None = None,
+    purpose: str = "chat",
+    is_sleep: bool = False,
 ) -> dict[str, Any]:
-    """Execute the actual API call."""
-    payload: dict[str, Any] = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": messages,
-    }
+    """Blocking twin of chat_completion for synchronous callers (e.g. the session close hook)."""
+    if _state.auth_latch:
+        raise RuntimeError("Auth latch tripped — cannot call LLM")
+    if check_spend_caps(purpose, is_sleep) != SpendStatus.OK:
+        return {"content": "", "spend_blocked": True}
 
-    if temperature is not None:
-        payload["temperature"] = temperature
-
+    model = _model(model)
+    kwargs = _request_kwargs(messages, model, max_tokens)
     if json_schema:
-        payload["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {"name": "sunny_response", "schema": json_schema},
-        }
+        kwargs["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
+    start_time = time.monotonic()
+    try:
+        response = _get_sync_client().messages.create(**kwargs)
+    except anthropic.AuthenticationError:
+        trip_auth_latch()
+        raise
+    except Exception as e:
+        log.error("LLM call failed for %s: %s", purpose, type(e).__name__)
+        raise
+    return _finish(response, model, purpose, json_schema, start_time, is_sleep)
 
-    response = await _client.post("/v1/messages", json=payload)
-    response.raise_for_status()
-    data = response.json()
 
-    # Parse response
-    content_blocks = data.get("content", [])
-    content_text = ""
-    for block in content_blocks:
-        if block.get("type") == "text":
-            content_text += block.get("text", "")
-
-    # Track usage
-    usage = data.get("usage", {})
-    prompt_tokens = usage.get("input_tokens", 0)
-    completion_tokens = usage.get("output_tokens", 0)
-    _update_spend(prompt_tokens, completion_tokens, model)
-
-    # Parse JSON if schema was requested
-    if json_schema:
-        try:
-            content_text = json.loads(content_text)
-        except json.JSONDecodeError:
-            log.warning("JSON schema response failed to parse: %s", content_text[:200])
-
-    return {
+def _finish(response: Any, model: str, purpose: str, json_schema: dict | None,
+            start_time: float, is_sleep: bool) -> dict[str, Any]:
+    """Turn an API response into Sunny's result dict and record its cost."""
+    if response.stop_reason == "refusal":
+        log.warning("Claude declined the %s request", purpose)
+    content_text = "".join(b.text for b in response.content if b.type == "text")
+    result: dict[str, Any] = {
         "content": content_text,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
+        "prompt_tokens": response.usage.input_tokens,
+        "completion_tokens": response.usage.output_tokens,
+        "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+        "stop_reason": response.stop_reason,
     }
+    if json_schema and response.stop_reason != "refusal":
+        try:
+            result["content"] = json.loads(content_text)
+        except json.JSONDecodeError:
+            log.warning("JSON schema response failed to parse")
+
+    _account(purpose, response.model or model, result, (time.monotonic() - start_time) * 1000, is_sleep)
+    return result
 
 
-def _update_spend(prompt_tokens: int, completion_tokens: int, model: str) -> None:
-    """Update spend tracking based on token usage."""
-    # Rough cost estimates per million tokens (USD)
-    costs = {
-        "claude-haiku-": (0.00025, 0.00125),
-        "claude-sonnet-": (0.003, 0.015),
-        "claude-opus-": (0.015, 0.075),
-    }
+def _cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    rate = next((v for k, v in PRICES_PER_MTOK.items() if model.startswith(k)), PRICES_PER_MTOK["claude-sonnet-"])
+    return (prompt_tokens * rate[0] + completion_tokens * rate[1]) / 1_000_000
 
-    rate_key = None
-    for key in costs:
-        if key in model:
-            rate_key = key
-            break
 
-    if rate_key is None:
-        rate_key = "claude-sonnet-"  # default
-
-    input_cost, output_cost = costs[rate_key]
-    cost = (prompt_tokens / 1_000_000) * input_cost + (completion_tokens / 1_000_000) * output_cost
-
+def _account(purpose: str, model: str, result: dict, latency_ms: float, is_sleep: bool = False) -> None:
+    """Add a call's cost to the spend totals and append it to log/llm-usage.md."""
+    cost = _cost(model, result.get("prompt_tokens", 0), result.get("completion_tokens", 0))
     _state.daily_spend += cost
     _state.monthly_spend += cost
+    if is_sleep:
+        _state.sleep_budget_used += cost
+    _save_spend()
 
-
-def _record_usage(purpose: str, model: str, result: dict, latency_ms: float) -> None:
-    """Log usage to log/llm-usage.md."""
     usage = UsageEntry(
         purpose=purpose,
         model=model,
         prompt_tokens=result.get("prompt_tokens", 0),
         completion_tokens=result.get("completion_tokens", 0),
         total_tokens=result.get("total_tokens", 0),
-        cost=_estimate_cost(result),
+        cost=cost,
         latency_ms=latency_ms,
     )
-
     try:
-        log_path = Path("vault") / "log" / "llm-usage.md"
+        log_path = Path(config.get_settings().vault_path) / "log" / "llm-usage.md"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{usage.timestamp}] purpose={usage.purpose} model={usage.model} "
@@ -326,72 +412,40 @@ def _record_usage(purpose: str, model: str, result: dict, latency_ms: float) -> 
         log.warning("Failed to write LLM usage log")
 
 
-def _estimate_cost(result: dict) -> float:
-    """Estimate cost from result tokens."""
-    prompt = result.get("prompt_tokens", 0)
-    completion = result.get("completion_tokens", 0)
-    # Approximate $0.003/$0.015 per million tokens (sonnet rates)
-    return (prompt / 1_000_000) * 0.003 + (completion / 1_000_000) * 0.015
-
-
 async def streaming_chat(
     messages: list[dict],
-    model: str = MODEL_DEFAULT,
+    model: str | None = None,
     *,
-    max_tokens: int = 4096,
+    max_tokens: int = 64000,
     on_chunk: Any = None,  # callback(chunk: str) -> None
+    purpose: str = "chat",
 ) -> AsyncIterator[str]:
-    """Stream a chat completion, yielding text chunks.
-
-    Yields completed sentences/phrases as they arrive.
-    """
-    # Check auth latch
+    """Stream a chat completion, yielding text chunks as they arrive."""
     if _state.auth_latch:
         raise RuntimeError("Auth latch tripped")
 
-    # Check spend caps
-    status = check_spend_caps("chat")
-    if status != SpendStatus.OK:
-        yield ""
+    if check_spend_caps(purpose) != SpendStatus.OK:
+        yield "[Sunny's daily or monthly Claude spend cap has been reached]"
         return
 
-    if _state.semaphore is None:
-        _state.semaphore = asyncio.Semaphore(1)
+    model = _model(model)
+    start_time = time.monotonic()
+    try:
+        async with _semaphore(False):
+            async with _get_client().messages.stream(**_request_kwargs(messages, model, max_tokens)) as stream:
+                async for text in stream.text_stream:
+                    if on_chunk:
+                        on_chunk(text)
+                    yield text
+                final = await stream.get_final_message()
+    except anthropic.AuthenticationError:
+        trip_auth_latch()
+        raise
 
-    async with _state.semaphore:
-        payload = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": messages,
-            "stream": True,
-        }
-
-        response = await _client.post("/v1/messages", json=payload)
-        response.raise_for_status()
-
-        accumulated = ""
-        async for line in response.aiter_lines():
-            if not line or not line.startswith("data: "):
-                continue
-            data_str = line[6:]  # strip "data: "
-            if data_str.strip() == "[DONE]":
-                break
-            try:
-                data = json.loads(data_str)
-                event_type = data.get("type", "")
-                if event_type == "content_block_delta":
-                    text = data.get("delta", {}).get("text", "")
-                    if text:
-                        accumulated += text
-                        if on_chunk:
-                            on_chunk(text)
-                        # Yield on sentence boundaries or chunk size
-                        if len(text) > 50 or ". " in text or "\n" in text:
-                            yield accumulated
-                            accumulated = ""
-            except json.JSONDecodeError:
-                continue
-
-        # Flush remaining
-        if accumulated:
-            yield accumulated
+    if final.stop_reason == "refusal":
+        yield "\n\n[Claude declined to answer this.]"
+    _account(purpose, final.model or model, {
+        "prompt_tokens": final.usage.input_tokens,
+        "completion_tokens": final.usage.output_tokens,
+        "total_tokens": final.usage.input_tokens + final.usage.output_tokens,
+    }, (time.monotonic() - start_time) * 1000)

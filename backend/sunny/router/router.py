@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from sunny.config import vault_root
 
 log = logging.getLogger(__name__)
 
@@ -204,7 +205,7 @@ def _log_routing(result: RoutingResult) -> None:
     line = f"[{timestamp}] input=\"{_last_message or ''[:100]}\" intent={intent_str} confidence={confidence} action={action}{runner_str}\n"
 
     try:
-        log_path = Path("vault") / INTENTS_LOG_FILE
+        log_path = vault_root() / INTENTS_LOG_FILE
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(line)

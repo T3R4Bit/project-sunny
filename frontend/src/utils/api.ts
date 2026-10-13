@@ -15,7 +15,7 @@ async function request(path: string, init?: RequestInit) {
 
 export const api = {
   // Auth
-  login: (username: string, password: string) =>
+  login: (password: string) =>
     request('/login', {
       method: 'POST',
       body: JSON.stringify({ password }),
@@ -29,7 +29,7 @@ export const api = {
     request('/projects', { method: 'POST', body: JSON.stringify(data) }),
   project: (slug: string) => request(`/projects/${slug}`),
   updateProject: (slug: string, data: Partial<{ description: string }>) =>
-    request(`/projects/${slug}`, { method: 'POST', body: JSON.stringify(data) }),
+    request(`/projects/${slug}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteProject: (slug: string) =>
     request(`/projects/${slug}`, { method: 'DELETE' }),
 
@@ -42,7 +42,8 @@ export const api = {
 
   // Home sessions
   homeSessions: () => request('/chats/sessions'),
-  createHomeSession: () => request('/chats/sessions', { method: 'POST', body: JSON.stringify({}) }),
+  createHomeSession: (title?: string) =>
+    request('/chats/sessions', { method: 'POST', body: JSON.stringify(title ? { title } : {}) }),
   closeHomeSession: (sessionSlug: string, data?: { close_data?: Record<string, unknown> }) =>
     request(`/chats/sessions/${sessionSlug}/close`, { method: 'POST', body: JSON.stringify(data || {}) }),
 
@@ -52,6 +53,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ message, ...(projectSlug ? { project_slug: projectSlug } : {}) }),
     }),
+  session: (sessionSlug: string, projectSlug?: string) =>
+    request(projectSlug ? `/projects/${projectSlug}/sessions/${sessionSlug}/turns` : `/chats/sessions/${sessionSlug}`),
   streamChat: async (
     sessionSlug: string,
     message: string,
@@ -62,7 +65,7 @@ export const api = {
     const body: Record<string, string> = { message };
     if (projectSlug) body.project_slug = projectSlug;
 
-    const res = await fetch(`/api/chats/sessions/${sessionSlug}/chat/stream`, {
+    const res = await fetch(`${BASE}/chats/sessions/${sessionSlug}/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -78,22 +81,19 @@ export const api = {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') return;
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.choices?.[0]?.delta?.content) {
-              onChunk?.(parsed.choices[0].delta.content);
-            }
-          } catch {
-            // skip parse errors
-          }
+      for (const event of events) {
+        if (!event.startsWith('data: ')) continue;
+        const data = event.slice(6);
+        if (data === '[DONE]') {
+          onComplete?.();
+          return;
         }
+        const parsed = JSON.parse(data);
+        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.text) onChunk?.(parsed.text);
       }
     }
     onComplete?.();

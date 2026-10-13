@@ -25,12 +25,12 @@ def reset_agent_loop():
 @pytest.fixture
 def client(vault: Path, reset_agent_loop):
     """Test client with vault path pointing to tmp_path."""
-    mock_settings = MagicMock()
+    from sunny.config import Settings
+    mock_settings = Settings(_env_file=None)
     mock_settings.vault_path = vault
     mock_settings.db_path = str(vault / ".sunny" / "sunny.db")
     mock_settings.admin_password_hash = ""
     mock_settings.log_level = "info"
-    mock_settings.sleep_state = False
 
     import sunny.config
     sunny.config.get_settings = lambda: mock_settings
