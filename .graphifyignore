@@ -1,0 +1,3 @@
+# Sunny-Build/ is a byte-identical copy of the repo root; graph only the root.
+Sunny-Build/*
+!Sunny-Build/README.md
