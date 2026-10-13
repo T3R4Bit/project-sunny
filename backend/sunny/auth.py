@@ -32,7 +32,7 @@ COOKIE_NAME = "session"
 PBKDF2_ITERATIONS = 600_000
 
 # Paths reachable without a session: auth itself, health, and the static PWA shell.
-PUBLIC_PATHS = {"/login", "/logout", "/auth/status", "/health", "/", "/index.html",
+PUBLIC_PATHS = {"/login", "/logout", "/auth/status", "/health", "/", "/index.html", "/auth/google/callback",
                 "/manifest.json", "/sw.js", "/favicon.ico"}
 PUBLIC_PREFIXES = ("/assets/", "/icon-")
 

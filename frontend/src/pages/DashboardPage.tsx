@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../utils/api';
 import Icon from '../components/Icon';
+import BriefCard from '../components/BriefCard';
 import type { Page } from '../App';
 
 /* ---------- formatting ---------- */
@@ -166,6 +167,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
           </div>
           {error && <span className="pill bad">refresh failed</span>}
         </div>
+
+        <BriefCard onSettings={() => onNavigate('settings')} />
 
         {/* Quick stats */}
         <div className="card col-3"><div className="stat"><span className="label">CPU</span>

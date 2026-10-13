@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../utils/api';
+import IntegrationsCard from '../components/IntegrationsCard';
 
 function Row({ k, v, ok }: { k: string; v: React.ReactNode; ok?: boolean }) {
   return (
@@ -11,7 +12,7 @@ function Row({ k, v, ok }: { k: string; v: React.ReactNode; ok?: boolean }) {
   );
 }
 
-export default function AdminPage() {
+export default function AdminPage({ notice }: { notice?: string }) {
   const [s, setS] = useState<any>(null);
   const [error, setError] = useState('');
 
@@ -31,6 +32,7 @@ export default function AdminPage() {
       {error && <div className="error-box">{error}</div>}
       {s && (
         <div className="grid">
+          <IntegrationsCard notice={notice} />
           <section className="card col-6">
             <div className="card-head"><div className="card-title">Claude</div></div>
             <div className="list">
@@ -43,17 +45,6 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <section className="card col-6">
-            <div className="card-head"><div className="card-title">Integrations</div></div>
-            <div className="list">
-              <Row k="Nextcloud calendar" v={s.integrations.nextcloud ? 'configured' : 'not set up'} ok={s.integrations.nextcloud} />
-              <Row k="Garmin" v={s.integrations.garmin ? 'credentials set' : 'not set up'} ok={s.integrations.garmin} />
-              <Row k="Push notifications" v={s.integrations.push ? 'configured' : 'not set up'} ok={s.integrations.push} />
-            </div>
-            <p className="muted small" style={{ marginBottom: 0 }}>
-              Calendar, Garmin and push have code in the backend but are not connected to any feature yet.
-            </p>
-          </section>
 
           <section className="card col-6">
             <div className="card-head"><div className="card-title">Agent</div></div>

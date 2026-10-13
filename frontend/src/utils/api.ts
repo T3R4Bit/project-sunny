@@ -106,4 +106,14 @@ export const api = {
   // Admin
   adminStatus: () => request('/admin/status'),
   dashboard: () => request('/dashboard'),
+
+  // Daily brief
+  brief: () => request('/brief'),
+  refreshBrief: () => request('/brief/refresh', { method: 'POST' }),
+
+  // Integrations
+  integrations: () => request('/integrations'),
+  checkIntegration: (key: string) => request(`/integrations/${key}/check`, { method: 'POST' }),
+  googleStart: () => request('/integrations/google/start', { method: 'POST' }),
+  googleDisconnect: () => request('/integrations/google/disconnect', { method: 'POST' }),
 };

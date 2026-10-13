@@ -18,6 +18,8 @@ from sunny.config import get_settings, Settings
 from sunny.db import init_db
 from sunny.admin import router as admin_router
 from sunny.dashboard import router as dashboard_router
+from sunny import brief
+from sunny.integrations import router as integrations_router
 from sunny.auth import install_auth_middleware, router as auth_router
 from sunny.projects.router import router as projects_router
 from sunny.watcher import start_watcher, stop_watcher
@@ -123,6 +125,8 @@ def create_app() -> FastAPI:
     # Include admin status
     app.include_router(admin_router)
     app.include_router(dashboard_router)
+    app.include_router(integrations_router)
+    app.include_router(brief.router)
 
     mount_frontend(app, get_settings().frontend_dir)
 
@@ -186,6 +190,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sunny.agent.loop import start_agent_loop, stop_agent_loop, AgentState
     await start_agent_loop(AgentState.AWAKE)
 
+    # Daily brief scheduler
+    brief.start_scheduler()
+
     yield
 
     # Shutdown: stop watchers and background loops
@@ -193,6 +200,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_watcher()
     await stop_index_watcher()
     await stop_agent_loop()
+    await brief.stop_scheduler()
 
     for name, loop in _loop_registry.items():
         if name == "main":

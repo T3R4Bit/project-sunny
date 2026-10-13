@@ -1,4 +1,5 @@
 import { useState } from 'react';
+
 import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import DashboardPage from './pages/DashboardPage';
@@ -8,11 +9,14 @@ import SearchPage from './pages/SearchPage';
 import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
 
+const googleNotice = new URLSearchParams(window.location.search).get('google') || undefined;
+if (googleNotice) window.history.replaceState(null, '', '/');
+
 export type Page = 'dashboard' | 'chat' | 'projects' | 'session' | 'search' | 'settings';
 
 export default function App() {
   const { authenticated, loading, logout, check } = useAuth();
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [currentPage, setCurrentPage] = useState<Page>(googleNotice ? 'settings' : 'dashboard');
   const [pageProps, setPageProps] = useState<{ sessionId?: string; projectSlug?: string }>({});
 
   function navigate(page: Page, props?: { sessionId?: string; projectSlug?: string }) {
@@ -38,7 +42,7 @@ export default function App() {
       )}
       {currentPage === 'projects' && <ProjectsPage onNavigate={navigate} />}
       {currentPage === 'search' && <SearchPage />}
-      {currentPage === 'settings' && <AdminPage />}
+      {currentPage === 'settings' && <AdminPage notice={googleNotice} />}
     </Layout>
   );
 }

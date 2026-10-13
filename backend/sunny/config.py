@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     nextcloud_password: str = ""
     nextcloud_calendar_id: str = ""
     google_creds_path: str = ""
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""  # must match the OAuth client in Google Cloud, e.g. https://<host>:5443/auth/google/callback
+    openweathermap_api_key: str = ""
+    weather_locations: str = ""  # ";"-separated OpenWeatherMap queries, e.g. "Milton,GA,US;Kennesaw,GA,US"
     garmin_username: str = ""
     garmin_password: str = ""
 
@@ -67,6 +72,9 @@ class Settings(BaseSettings):
     listen_host: str = "0.0.0.0"
     listen_port: int = 8080
     log_level: str = "INFO"
+    public_url: str = "/"  # where to send the browser after OAuth, e.g. https://<host>.ts.net/
+    timezone: str = "America/New_York"
+    brief_time: str = "07:00"  # local time the daily brief is generated
     host_status_file: Path = Path("/host-status/status.json")  # written by deploy/collector.py
     session_secret: str = ""  # HMAC key for session cookies; generated into secret_dir if empty
     frontend_dir: Path = Field(Path("/app/frontend/dist"),

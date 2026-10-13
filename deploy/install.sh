@@ -42,6 +42,8 @@ curl -fsS http://127.0.0.1:8080/health && echo
 
 echo "== publish over Tailscale HTTPS (tailnet only)"
 sudo tailscale serve --bg --https=443 http://127.0.0.1:8080 >/dev/null
+# Port 5443 only exists because the Google OAuth client's registered redirect URI uses it
+sudo tailscale serve --bg --https=5443 http://127.0.0.1:8080 >/dev/null
 sudo tailscale serve status
 
 echo "== nightly backup timer"
